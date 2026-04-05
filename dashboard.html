@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Optimizer Dashboard</title>
+</head>
+<body>
+
+<h1>API Optimizer Dashboard</h1>
+
+<button onclick="loadData()">Load Analytics</button>
+
+<pre id="output"></pre>
+
+<script>
+async function loadData() {
+    const res = await fetch("http://127.0.0.1:8000/analytics");
+    const data = await res.json();
+
+    document.getElementById("output").innerText =
+        JSON.stringify(data, null, 2);
+}
+</script>
+
+</body>
+</html>
