@@ -17,4 +17,4 @@ A high-performance backend system built using FastAPI that optimizes API respons
 - Uvicorn
 - Redis 
 - MySQL
-- Git & GitHub
+
