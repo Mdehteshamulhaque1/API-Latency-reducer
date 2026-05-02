@@ -1,4 +1,3 @@
-API-Latency-Reducer
 API Optimizer 
 
 A high-performance backend system built using FastAPI that optimizes API response time by implementing caching, request batching, and efficient query handling.
