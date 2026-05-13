@@ -31,7 +31,7 @@ import {
   Zap,
 } from 'lucide-react'
 
-const COLORS = ['#38bdf8', '#f97316', '#22c55e', '#eab308']
+const COLORS = ['#0a66c2', '#f44786', '#8b5cf6', '#f97316']
 const RANGE_OPTIONS = [
   { label: '1H', value: 1 },
   { label: '6H', value: 6 },
@@ -52,7 +52,7 @@ export const DashboardPage: React.FC = () => {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-5 py-4 text-slate-200 shadow-xl backdrop-blur">
-          <RefreshCcw className="h-5 w-5 animate-spin text-cyan-400" />
+          <RefreshCcw className="h-5 w-5 animate-spin text-sky-400" />
           Loading analytics...
         </div>
       </div>
@@ -60,7 +60,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   if (!analytics) {
-    return <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-rose-100">No analytics data available yet.</div>
+    return <div className="rounded-2xl border border-pink-500/20 bg-pink-500/10 p-6 text-pink-100">No analytics data available yet.</div>
   }
 
   const cacheData = [
@@ -87,11 +87,11 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 text-slate-100 shadow-2xl">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.12),_transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.98))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(10,102,194,0.18),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(244,71,134,0.16),_transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.98))]" />
       <div className="relative space-y-8 p-6 sm:p-8 lg:p-10">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
               <Activity className="h-3.5 w-3.5" />
               Real-time optimization control room
             </div>
@@ -121,7 +121,7 @@ export const DashboardPage: React.FC = () => {
                   key={option.value}
                   onClick={() => setHours(option.value)}
                   className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                    hours === option.value ? 'bg-cyan-400 text-slate-950 shadow-lg' : 'text-slate-200 hover:bg-white/5'
+                    hours === option.value ? 'bg-pink-500 text-white shadow-lg' : 'text-slate-200 hover:bg-white/5'
                   }`}
                 >
                   {option.label}
@@ -324,12 +324,12 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon, accent, description }) => {
   const accentStyles = {
-    cyan: 'from-cyan-400/20 to-cyan-500/5 text-cyan-200 border-cyan-400/20',
-    orange: 'from-orange-400/20 to-orange-500/5 text-orange-200 border-orange-400/20',
+    cyan: 'from-sky-400/20 to-sky-500/5 text-sky-200 border-sky-400/20',
+    orange: 'from-pink-400/20 to-pink-500/5 text-pink-200 border-pink-400/20',
     emerald: 'from-emerald-400/20 to-emerald-500/5 text-emerald-200 border-emerald-400/20',
-    rose: 'from-rose-400/20 to-rose-500/5 text-rose-200 border-rose-400/20',
+    rose: 'from-fuchsia-400/20 to-fuchsia-500/5 text-fuchsia-200 border-fuchsia-400/20',
     violet: 'from-violet-400/20 to-violet-500/5 text-violet-200 border-violet-400/20',
-    amber: 'from-amber-400/20 to-amber-500/5 text-amber-200 border-amber-400/20',
+    amber: 'from-amber-400/20 to-orange-500/5 text-amber-200 border-amber-400/20',
   }
 
   return (
@@ -371,8 +371,8 @@ const PanelCard: React.FC<{ title: string; subtitle: string; icon: React.ReactNo
 const SuggestionCard: React.FC<{ suggestion: { title: string; severity: 'low' | 'medium' | 'high'; endpoint?: string | null; reason: string; action: string } }> = ({ suggestion }) => {
   const severityStyles = {
     low: 'border-slate-400/20 bg-slate-400/10 text-slate-200',
-    medium: 'border-amber-400/20 bg-amber-400/10 text-amber-100',
-    high: 'border-rose-400/20 bg-rose-400/10 text-rose-100',
+    medium: 'border-sky-400/20 bg-sky-400/10 text-sky-100',
+    high: 'border-pink-400/20 bg-pink-400/10 text-pink-100',
   }
 
   return (

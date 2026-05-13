@@ -6,10 +6,11 @@
   :root {
     color-scheme: light;
     --brand-ink: 15 23 42;
-    --brand-blue: 14 102 180;
-    --brand-blue-deep: 10 77 140;
-    --brand-pink: 236 72 153;
-    --brand-orange: 249 115 22;
+    --brand-linkedin: 10 102 194;
+    --brand-linkedin-deep: 6 66 124;
+    --brand-instagram: 244 71 134;
+    --brand-instagram-deep: 190 24 93;
+    --brand-violet: 139 92 246;
     --brand-surface: 248 250 252;
     --brand-card: 255 255 255;
     --brand-border: 219 234 254;
@@ -17,8 +18,9 @@
 
   html {
     background:
-      radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 28%),
-      radial-gradient(circle at top right, rgba(236, 72, 153, 0.14), transparent 26%),
+      radial-gradient(circle at top left, rgba(10, 102, 194, 0.2), transparent 28%),
+      radial-gradient(circle at top right, rgba(244, 71, 134, 0.16), transparent 26%),
+      radial-gradient(circle at bottom center, rgba(139, 92, 246, 0.08), transparent 30%),
       linear-gradient(180deg, #f8fbff 0%, #eef4fb 45%, #f8fafc 100%);
   }
 
@@ -28,7 +30,7 @@
   }
 
   ::selection {
-    background: rgba(14, 102, 180, 0.18);
+    background: rgba(10, 102, 194, 0.18);
     color: rgb(15, 23, 42);
   }
 }
@@ -36,15 +38,16 @@
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-white shadow-lg shadow-sky-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl;
-    background: linear-gradient(135deg, rgb(14 102 180), rgb(59 130 246) 55%, rgb(236 72 153));
+    background: linear-gradient(135deg, rgb(10 102 194), rgb(56 189 248) 52%, rgb(244 71 134));
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-slate-700 border border-sky-100 bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-slate-700 border border-sky-100 bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-pink-200 hover:bg-pink-50;
   }
 
   .card {
     @apply rounded-3xl border border-sky-100 bg-white/90 p-6 shadow-[0_20px_60px_-24px_rgba(15,23,42,0.18)] backdrop-blur;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.92));
   }
 
   .badge {
@@ -66,12 +69,14 @@
   .surface-shell {
     @apply relative min-h-screen overflow-hidden;
     background:
-      radial-gradient(circle at top left, rgba(14, 102, 180, 0.18), transparent 28%),
-      radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.12), transparent 24%),
+      radial-gradient(circle at top left, rgba(10, 102, 194, 0.18), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(244, 71, 134, 0.14), transparent 24%),
+      radial-gradient(circle at 55% 0%, rgba(139, 92, 246, 0.1), transparent 22%),
       linear-gradient(180deg, #f8fbff 0%, #eef4fb 42%, #f8fafc 100%);
   }
 
   .glass-panel {
     @apply border border-white/70 bg-white/80 shadow-[0_22px_70px_-30px_rgba(15,23,42,0.28)] backdrop-blur-xl;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(248, 250, 252, 0.72));
   }
 }

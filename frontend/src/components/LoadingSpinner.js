@@ -6,5 +6,5 @@ export const LoadingSpinner = ({ message, size = 'md' }) => {
         md: 'w-8 h-8',
         lg: 'w-12 h-12',
     };
-    return (_jsxs("div", { className: "flex flex-col items-center justify-center space-y-3", children: [_jsx(Loader, { className: `${sizeClasses[size]} animate-spin text-blue-600` }), message && _jsx("p", { className: "text-gray-600", children: message })] }));
+    return (_jsxs("div", { className: "flex flex-col items-center justify-center space-y-3", children: [_jsx(Loader, { className: `${sizeClasses[size]} animate-spin text-sky-600` }), message && _jsx("p", { className: "text-slate-600", children: message })] }));
 };

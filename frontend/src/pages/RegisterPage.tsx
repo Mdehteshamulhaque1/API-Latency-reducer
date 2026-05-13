@@ -45,7 +45,7 @@ export const RegisterPage: React.FC = () => {
       <div className="relative w-full max-w-md">
         <div className="card">
           <h1 className="mb-2 text-center text-3xl font-black tracking-tight text-slate-900">Create Account</h1>
-          <p className="mb-8 text-center text-sm text-slate-500">Join the dashboard with a polished social-inspired theme.</p>
+          <p className="mb-8 text-center text-sm text-slate-500">Join the dashboard with a LinkedIn-and-Instagram inspired theme.</p>
 
           {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
 
@@ -108,7 +108,7 @@ export const RegisterPage: React.FC = () => {
 
           <p className="mt-4 text-center text-slate-500">
             Already have an account?{' '}
-            <Link to="/login" className="font-semibold text-sky-700 hover:text-pink-600 hover:underline">
+            <Link to="/login" className="font-semibold text-[rgb(10,102,194)] hover:text-pink-600 hover:underline">
               Login
             </Link>
           </p>

@@ -34,11 +34,11 @@ export const LoginPage: React.FC = () => {
       <div className="relative w-full max-w-md">
         <div className="card">
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 via-blue-600 to-pink-500 text-white shadow-lg shadow-sky-500/25">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[rgb(10,102,194)] via-sky-500 to-pink-500 text-white shadow-lg shadow-sky-500/25">
               <span className="text-xl font-black">A</span>
             </div>
             <h1 className="text-3xl font-black tracking-tight text-slate-900">API Optimizer</h1>
-            <p className="mt-2 text-sm text-slate-500">LinkedIn clarity with Instagram energy</p>
+            <p className="mt-2 text-sm text-slate-500">LinkedIn structure with Instagram glow</p>
           </div>
 
           {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
@@ -77,7 +77,7 @@ export const LoginPage: React.FC = () => {
 
           <p className="mt-4 text-center text-slate-500">
             Don't have an account?{' '}
-            <a href="/register" className="font-semibold text-sky-700 hover:text-pink-600 hover:underline">
+            <a href="/register" className="font-semibold text-[rgb(10,102,194)] hover:text-pink-600 hover:underline">
               Register
             </a>
           </p>
