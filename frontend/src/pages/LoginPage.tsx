@@ -27,32 +27,41 @@ export const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-      <div className="w-full max-w-md">
+    <div className="surface-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="absolute inset-x-0 top-10 flex justify-center">
+        <div className="h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
+      </div>
+      <div className="relative w-full max-w-md">
         <div className="card">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">API Optimizer</h1>
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 via-blue-600 to-pink-500 text-white shadow-lg shadow-sky-500/25">
+              <span className="text-xl font-black">A</span>
+            </div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">API Optimizer</h1>
+            <p className="mt-2 text-sm text-slate-500">LinkedIn clarity with Instagram energy</p>
+          </div>
 
-          {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
+          {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="block text-gray-700 font-semibold mb-2">Username</label>
+              <label className="mb-2 block font-semibold text-slate-700">Username</label>
               <input
                 type="text"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 required
               />
             </div>
 
             <div className="mb-6">
-              <label className="block text-gray-700 font-semibold mb-2">Password</label>
+              <label className="mb-2 block font-semibold text-slate-700">Password</label>
               <input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 required
               />
             </div>
@@ -66,15 +75,15 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          <p className="text-center text-gray-600 mt-4">
+          <p className="mt-4 text-center text-slate-500">
             Don't have an account?{' '}
-            <a href="/register" className="text-blue-600 hover:underline">
+            <a href="/register" className="font-semibold text-sky-700 hover:text-pink-600 hover:underline">
               Register
             </a>
           </p>
 
-          <div className="mt-6 p-3 bg-blue-50 rounded text-sm text-gray-700">
-            <p className="font-semibold mb-2">Demo Credentials:</p>
+          <div className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm text-slate-700">
+            <p className="mb-2 font-semibold text-slate-900">Demo Credentials:</p>
             <p>Username: demo_user</p>
             <p>Password: DemoPassword123!</p>
           </div>

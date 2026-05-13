@@ -38,56 +38,60 @@ export const RegisterPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-      <div className="w-full max-w-md">
+    <div className="surface-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="absolute inset-x-0 top-10 flex justify-center">
+        <div className="h-44 w-44 rounded-full bg-pink-400/20 blur-3xl" />
+      </div>
+      <div className="relative w-full max-w-md">
         <div className="card">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">Create Account</h1>
+          <h1 className="mb-2 text-center text-3xl font-black tracking-tight text-slate-900">Create Account</h1>
+          <p className="mb-8 text-center text-sm text-slate-500">Join the dashboard with a polished social-inspired theme.</p>
 
-          {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
+          {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="block text-gray-700 font-semibold mb-2">Username</label>
+              <label className="mb-2 block font-semibold text-slate-700">Username</label>
               <input
                 type="text"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 minLength={3}
                 required
               />
             </div>
 
             <div className="mb-4">
-              <label className="block text-gray-700 font-semibold mb-2">Email</label>
+              <label className="mb-2 block font-semibold text-slate-700">Email</label>
               <input
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 required
               />
             </div>
 
             <div className="mb-4">
-              <label className="block text-gray-700 font-semibold mb-2">Password</label>
+              <label className="mb-2 block font-semibold text-slate-700">Password</label>
               <input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 minLength={8}
                 required
               />
             </div>
 
             <div className="mb-6">
-              <label className="block text-gray-700 font-semibold mb-2">Confirm Password</label>
+              <label className="mb-2 block font-semibold text-slate-700">Confirm Password</label>
               <input
                 type="password"
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 minLength={8}
                 required
               />
@@ -102,9 +106,9 @@ export const RegisterPage: React.FC = () => {
             </button>
           </form>
 
-          <p className="text-center text-gray-600 mt-4">
+          <p className="mt-4 text-center text-slate-500">
             Already have an account?{' '}
-            <Link to="/login" className="text-blue-600 hover:underline">
+            <Link to="/login" className="font-semibold text-sky-700 hover:text-pink-600 hover:underline">
               Login
             </Link>
           </p>

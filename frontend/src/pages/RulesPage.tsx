@@ -70,13 +70,16 @@ export const RulesPage: React.FC = () => {
   }
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-96">Loading...</div>
+    return <div className="flex h-96 items-center justify-center text-slate-500">Loading...</div>
   }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800">Cache Rules</h1>
+        <div>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">Cache Rules</h1>
+          <p className="mt-1 text-sm text-slate-500">Configure policies with a LinkedIn-clean, Instagram-accented look.</p>
+        </div>
         <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
           <Plus className="w-5 h-5" />
           New Rule
@@ -85,11 +88,11 @@ export const RulesPage: React.FC = () => {
 
       {showForm && (
         <div className="card">
-          <h2 className="text-xl font-bold mb-4">{editingId ? 'Edit Rule' : 'Create New Rule'}</h2>
+          <h2 className="text-xl font-bold mb-4 text-slate-900">{editingId ? 'Edit Rule' : 'Create New Rule'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Endpoint Pattern
                 </label>
                 <input
@@ -97,28 +100,28 @@ export const RulesPage: React.FC = () => {
                   value={formData.endpoint_pattern}
                   onChange={(e) => setFormData({ ...formData, endpoint_pattern: e.target.value })}
                   placeholder="/api/users/*"
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-2xl border border-sky-100 bg-white/90 px-3 py-2.5 text-slate-900 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">TTL (seconds)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">TTL (seconds)</label>
                 <input
                   type="number"
                   value={formData.ttl}
                   onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-2xl border border-sky-100 bg-white/90 px-3 py-2.5 text-slate-900 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-3 py-2.5 text-slate-900 focus:outline-none focus:ring-4 focus:ring-sky-500/15"
                 rows={3}
               />
             </div>
@@ -137,9 +140,9 @@ export const RulesPage: React.FC = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, [key]: e.target.checked })
                     }
-                    className="rounded"
+                    className="rounded border-sky-300 text-sky-600 focus:ring-sky-500"
                   />
-                  <span className="text-sm text-gray-700">{label}</span>
+                  <span className="text-sm text-slate-700">{label}</span>
                 </label>
               ))}
             </div>
@@ -160,25 +163,25 @@ export const RulesPage: React.FC = () => {
       <div className="card overflow-x-auto">
         {rules && rules.length > 0 ? (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-sky-50/80">
               <tr>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Endpoint</th>
-                <th className="px-4 py-2 text-center font-semibold text-gray-700">TTL</th>
-                <th className="px-4 py-2 text-center font-semibold text-gray-700">Enabled</th>
-                <th className="px-4 py-2 text-center font-semibold text-gray-700">Options</th>
-                <th className="px-4 py-2 text-center font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Endpoint</th>
+                <th className="px-4 py-2 text-center font-semibold text-slate-700">TTL</th>
+                <th className="px-4 py-2 text-center font-semibold text-slate-700">Enabled</th>
+                <th className="px-4 py-2 text-center font-semibold text-slate-700">Options</th>
+                <th className="px-4 py-2 text-center font-semibold text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rules.map((rule) => (
-                <tr key={rule.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-2 font-mono text-blue-600 text-xs">{rule.endpoint_pattern}</td>
+                <tr key={rule.id} className="border-b border-sky-50 hover:bg-sky-50/60 transition-colors">
+                  <td className="px-4 py-2 font-mono text-sky-700 text-xs">{rule.endpoint_pattern}</td>
                   <td className="px-4 py-2 text-center">{rule.ttl}s</td>
                   <td className="px-4 py-2 text-center">
                     {rule.enabled ? (
-                      <Check className="w-5 h-5 text-green-600 mx-auto" />
+                      <Check className="w-5 h-5 text-emerald-600 mx-auto" />
                     ) : (
-                      <X className="w-5 h-5 text-red-600 mx-auto" />
+                      <X className="w-5 h-5 text-rose-600 mx-auto" />
                     )}
                   </td>
                   <td className="px-4 py-2 text-center">
@@ -195,15 +198,15 @@ export const RulesPage: React.FC = () => {
                         setEditingId(rule.id)
                         setShowForm(true)
                       }}
-                      className="p-2 hover:bg-blue-100 rounded"
+                        className="rounded-full p-2 hover:bg-sky-100 transition-colors"
                     >
-                      <Edit2 className="w-4 h-4 text-blue-600" />
+                        <Edit2 className="w-4 h-4 text-sky-600" />
                     </button>
                     <button
                       onClick={() => deleteMutation.mutate(rule.id)}
-                      className="p-2 hover:bg-red-100 rounded"
+                        className="rounded-full p-2 hover:bg-rose-100 transition-colors"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                        <Trash2 className="w-4 h-4 text-rose-600" />
                     </button>
                   </td>
                 </tr>
@@ -211,7 +214,7 @@ export const RulesPage: React.FC = () => {
             </tbody>
           </table>
         ) : (
-          <div className="text-center text-gray-500 py-8">No cache rules created yet</div>
+            <div className="text-center text-slate-500 py-8">No cache rules created yet</div>
         )}
       </div>
     </div>

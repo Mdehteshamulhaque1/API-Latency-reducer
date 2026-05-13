@@ -13,29 +13,31 @@ export const Navigation: React.FC = () => {
   }
 
   return (
-    <nav className="bg-white shadow-md">
+    <nav className="glass-panel sticky top-0 z-30 border-x-0 border-t-0 rounded-none">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link to="/dashboard" className="flex items-center space-x-2">
-            <Shield className="w-8 h-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-800">API Optimizer</span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 via-blue-600 to-pink-500 shadow-lg shadow-sky-500/25">
+              <Shield className="w-5 h-5 text-white" />
+            </span>
+            <span className="text-xl font-extrabold tracking-tight text-slate-900">API Optimizer</span>
           </Link>
 
           <div className="flex items-center space-x-8">
-            <Link to="/dashboard" className="flex items-center space-x-1 text-gray-700 hover:text-blue-600">
+            <Link to="/dashboard" className="flex items-center space-x-1 text-slate-600 hover:text-sky-600 transition-colors">
               <BarChart3 className="w-5 h-5" />
               <span>Dashboard</span>
             </Link>
-            <Link to="/rules" className="flex items-center space-x-1 text-gray-700 hover:text-blue-600">
+            <Link to="/rules" className="flex items-center space-x-1 text-slate-600 hover:text-sky-600 transition-colors">
               <Settings className="w-5 h-5" />
               <span>Cache Rules</span>
             </Link>
 
-            <div className="flex items-center space-x-4 pl-8 border-l">
-              <span className="text-gray-700">{user?.username}</span>
+            <div className="flex items-center space-x-4 pl-8 border-l border-sky-100">
+              <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-slate-700 ring-1 ring-sky-100">{user?.username}</span>
               <button
                 onClick={handleLogout}
-                className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                className="flex items-center space-x-1 rounded-full px-3 py-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors"
               >
                 <LogOut className="w-5 h-5" />
                 <span>Logout</span>
