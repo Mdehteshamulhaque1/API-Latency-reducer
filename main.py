@@ -38,7 +38,7 @@ async def log_requests(request: Request, call_next):
         "time": round(process_time, 4)
     }
 
-    # avoid logging internal endpoints
+    # avoid logging internal endpints
     if request.url.path not in ["/analytics", "/run-tests"]:
         logs.append(log)
 
