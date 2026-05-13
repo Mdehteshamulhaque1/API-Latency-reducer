@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API Optimizer Control Room</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        :root {
+            --bg-1: #fff8f2;
+            --bg-2: #f4f0ff;
+            --bg-3: #e6f4ff;
+            --surface: rgba(255, 255, 255, 0.78);
+            --surface-strong: #ffffff;
+            --surface-soft: rgba(255, 255, 255, 0.5);
+            --text: #1b2230;
+            --muted: #5d6678;
+            --border: rgba(15, 38, 74, 0.12);
+            --ig-pink: #f44786;
+            --ig-orange: #ff7a3d;
+            --ig-violet: #8a3ffc;
+            --li-blue: #0a66c2;
+            --li-deep: #004182;
+            --success: #0a8f5b;
+            --danger: #d44545;
+            --shadow: 0 18px 60px rgba(19, 39, 75, 0.15);
+        }
+
+        [data-theme="dark"] {
+            --bg-1: #0d1320;
+            --bg-2: #18142d;
+            --bg-3: #101f34;
+            --surface: rgba(13, 20, 35, 0.8);
+            --surface-strong: #121e33;
+            --surface-soft: rgba(18, 30, 51, 0.66);
+            --text: #ecf2ff;
+            --muted: #9eb2cc;
+            --border: rgba(158, 178, 204, 0.2);
+            --ig-pink: #ff6da5;
+            --ig-orange: #ff9a62;
+            --ig-violet: #ac73ff;
+            --li-blue: #63aaff;
+            --li-deep: #2f8bff;
+            --success: #54d39f;
+            --danger: #ff7e7e;
+            --shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            font-family: Sora, "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at 10% 10%, rgba(244, 71, 134, 0.2), transparent 26%),
+                radial-gradient(circle at 84% 12%, rgba(10, 102, 194, 0.22), transparent 30%),
+                radial-gradient(circle at 55% 85%, rgba(255, 122, 61, 0.18), transparent 34%),
+                linear-gradient(140deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+            overflow-x: hidden;
+            transition: color 220ms ease, background 260ms ease;
+        }
+
+        .ambient {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 999px;
+            filter: blur(60px);
+            opacity: 0.28;
+            animation: drift 14s ease-in-out infinite;
+        }
+
+        .orb.one {
+            width: 320px;
+            height: 320px;
+            left: -80px;
+            top: 20px;
+            background: var(--ig-pink);
+        }
+
+        .orb.two {
+            width: 360px;
+            height: 360px;
+            right: -110px;
+            top: 180px;
+            animation-delay: -4s;
+            background: var(--li-blue);
+        }
+
+        .orb.three {
+            width: 300px;
+            height: 300px;
+            left: 34%;
+            bottom: -140px;
+            animation-delay: -7s;
+            background: var(--ig-orange);
+        }
+
+        @keyframes drift {
+            0%,
+            100% {
+                transform: translateY(0) scale(1);
+            }
+
+            50% {
+                transform: translateY(-16px) scale(1.06);
+            }
+        }
+
+        .shell {
+            position: relative;
+            z-index: 1;
+            width: min(1240px, calc(100% - 28px));
+            margin: 0 auto;
+            padding: 24px 0 34px;
+        }
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: 28px;
+            padding: 26px;
+            border: 1px solid rgba(255, 255, 255, 0.36);
+            box-shadow: var(--shadow);
+            background:
+                linear-gradient(130deg, rgba(244, 71, 134, 0.95), rgba(138, 63, 252, 0.92) 42%, rgba(10, 102, 194, 0.96));
+            color: #fff;
+            isolation: isolate;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: auto -90px -140px auto;
+            width: 280px;
+            height: 280px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            z-index: -1;
+        }
+
+        .hero-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .hero-title {
+            margin: 0;
+            font-family: "Space Grotesk", Sora, sans-serif;
+            font-size: clamp(2rem, 4.2vw, 3.6rem);
+            line-height: 1.02;
+            letter-spacing: -0.03em;
+        }
+
+        .hero-lead {
+            margin: 12px 0 0;
+            max-width: 66ch;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .badge {
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.14);
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .hero-tools {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        button {
+            font: inherit;
+        }
+
+        .btn {
+            border: 0;
+            border-radius: 14px;
+            padding: 11px 14px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn.primary {
+            color: #fff;
+            background: linear-gradient(100deg, var(--li-blue), var(--li-deep));
+            box-shadow: 0 12px 20px rgba(0, 65, 130, 0.35);
+        }
+
+        .btn.secondary {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .theme-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            padding: 10px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .switch-pill {
+            width: 42px;
+            height: 24px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.35);
+            position: relative;
+            flex: 0 0 auto;
+        }
+
+        .switch-pill::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 220ms ease;
+        }
+
+        [data-theme="dark"] .switch-pill::after {
+            transform: translateX(18px);
+        }
+
+        .command-hint {
+            margin-top: 14px;
+            font-size: 0.83rem;
+            opacity: 0.9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 18px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 18px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(14px);
+            opacity: 0;
+            transform: translateY(12px);
+            animation: reveal 420ms ease forwards;
+        }
+
+        .card:nth-child(2) { animation-delay: 30ms; }
+        .card:nth-child(3) { animation-delay: 65ms; }
+        .card:nth-child(4) { animation-delay: 95ms; }
+        .card:nth-child(5) { animation-delay: 130ms; }
+        .card:nth-child(6) { animation-delay: 165ms; }
+        .card:nth-child(7) { animation-delay: 200ms; }
+
+        @keyframes reveal {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .metric {
+            grid-column: span 3;
+            min-height: 128px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .metric-label {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        .metric-value {
+            margin: 8px 0 0;
+            font-family: "Space Grotesk", Sora, sans-serif;
+            font-size: clamp(1.65rem, 2.8vw, 2.5rem);
+            letter-spacing: -0.03em;
+        }
+
+        .metric-sub {
+            display: inline-flex;
+            width: fit-content;
+            padding: 7px 11px;
+            border-radius: 999px;
+            background: linear-gradient(110deg, rgba(244, 71, 134, 0.12), rgba(10, 102, 194, 0.13));
+            color: var(--li-deep);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .panel {
+            grid-column: span 8;
+            min-height: 420px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .panel-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .panel-title {
+            margin: 0;
+            font-family: "Space Grotesk", Sora, sans-serif;
+            font-size: 1.2rem;
+            letter-spacing: -0.02em;
+        }
+
+        .tabs {
+            display: inline-flex;
+            padding: 4px;
+            border-radius: 999px;
+            background: rgba(93, 102, 120, 0.12);
+            gap: 4px;
+        }
+
+        .tabs button {
+            border: 0;
+            border-radius: 999px;
+            padding: 8px 12px;
+            background: transparent;
+            color: var(--muted);
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .tabs button.active {
+            color: var(--text);
+            background: var(--surface-strong);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+        }
+
+        .search-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .search-row input {
+            flex: 1 1 240px;
+            border: 1px solid var(--border);
+            background: var(--surface-strong);
+            color: var(--text);
+            border-radius: 12px;
+            padding: 10px 12px;
+            outline: none;
+        }
+
+        .search-row input:focus {
+            border-color: var(--li-blue);
+            box-shadow: 0 0 0 3px rgba(10, 102, 194, 0.18);
+        }
+
+        .output {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: linear-gradient(160deg, var(--surface-soft), transparent);
+            padding: 14px;
+            min-height: 260px;
+            overflow: auto;
+        }
+
+        .placeholder {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.65;
+        }
+
+        .route-grid {
+            display: grid;
+            gap: 10px;
+        }
+
+        .route-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px 14px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--surface-strong);
+        }
+
+        .route-name {
+            margin: 0;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .route-meta {
+            margin: 0;
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+
+        .heat-wrap {
+            grid-column: 1 / -1;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(93, 102, 120, 0.15);
+            overflow: hidden;
+        }
+
+        .heat-bar {
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--li-blue), var(--ig-pink), var(--ig-orange));
+            transition: width 320ms ease;
+        }
+
+        .json-view {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.55;
+            font-size: 0.9rem;
+        }
+
+        .side {
+            grid-column: span 4;
+            display: grid;
+            gap: 16px;
+            align-content: start;
+        }
+
+        .side-box {
+            min-height: 160px;
+        }
+
+        .kpi-list {
+            display: grid;
+            gap: 9px;
+        }
+
+        .kpi-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(93, 102, 120, 0.09);
+            gap: 8px;
+        }
+
+        .status {
+            display: inline-flex;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .status.good {
+            color: var(--success);
+            background: rgba(10, 143, 91, 0.15);
+        }
+
+        .status.warn {
+            color: var(--danger);
+            background: rgba(212, 69, 69, 0.16);
+        }
+
+        .spark {
+            width: 100%;
+            height: 70px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(10, 102, 194, 0.08), transparent);
+            padding: 8px;
+        }
+
+        .spark svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .mini-note {
+            margin: 10px 0 0;
+            color: var(--muted);
+            font-size: 0.82rem;
+            line-height: 1.5;
+        }
+
+        .toast {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            background: var(--surface-strong);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            box-shadow: var(--shadow);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(8px);
+            transition: opacity 180ms ease, transform 180ms ease;
+            z-index: 20;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .palette {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 14, 27, 0.5);
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            z-index: 30;
+            padding-top: 14vh;
+        }
+
+        .palette.open {
+            display: flex;
+        }
+
+        .palette-panel {
+            width: min(620px, calc(100% - 24px));
+            background: var(--surface-strong);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .palette-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .palette-header input {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font: inherit;
+            color: var(--text);
+            background: var(--surface);
+            outline: none;
+        }
+
+        .command-list {
+            padding: 8px;
+            display: grid;
+            gap: 4px;
+            max-height: 320px;
+            overflow: auto;
+        }
+
+        .command-item {
+            border: 0;
+            width: 100%;
+            text-align: left;
+            border-radius: 10px;
+            padding: 10px;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .command-item:hover,
+        .command-item.active {
+            background: rgba(10, 102, 194, 0.14);
+        }
+
+        @media (max-width: 1020px) {
+            .metric,
+            .panel,
+            .side {
+                grid-column: span 12;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .shell {
+                width: min(100% - 14px, 1240px);
+                padding: 14px 0 18px;
+            }
+
+            .hero {
+                border-radius: 20px;
+                padding: 18px;
+            }
+
+            .card {
+                border-radius: 16px;
+                padding: 14px;
+            }
+
+            .hero-tools {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .hero-tools .btn,
+            .theme-switch {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient" aria-hidden="true">
+        <div class="orb one"></div>
+        <div class="orb two"></div>
+        <div class="orb three"></div>
+    </div>
+
+    <main class="shell">
+        <section class="hero">
+            <div class="hero-top">
+                <div>
+                    <h1 class="hero-title">API Optimizer Control Room</h1>
+                    <p class="hero-lead">
+                        A modern observability surface with an Instagram-inspired energy gradient fused with LinkedIn's data-first clarity.
+                        Track route health, surface bottlenecks, and inspect analytics faster.
+                    </p>
+                    <div class="badge-row">
+                        <span class="badge">Latency Heatmap</span>
+                        <span class="badge">Keyboard Command Palette</span>
+                        <span class="badge">Auto Refresh</span>
+                    </div>
+                </div>
+
+                <div class="hero-tools">
+                    <button type="button" class="theme-switch" id="themeToggle" aria-pressed="false">
+                        <span class="switch-pill" aria-hidden="true"></span>
+                        <span id="themeLabel">Dark mode</span>
+                    </button>
+                    <button type="button" class="btn secondary" id="autoToggle">Auto refresh: Off</button>
+                    <button type="button" class="btn secondary" id="runTestsBtn">Run Tests</button>
+                    <button type="button" class="btn primary" id="loadBtn">Load Analytics</button>
+                </div>
+            </div>
+            <p class="command-hint">Quick actions: press Ctrl+K (or Cmd+K) for command palette.</p>
+        </section>
+
+        <section class="grid" aria-live="polite">
+            <article class="card metric">
+                <p class="metric-label">Total Requests</p>
+                <div>
+                    <p class="metric-value" id="totalRequests">--</p>
+                    <span class="metric-sub">Traffic volume</span>
+                </div>
+            </article>
+
+            <article class="card metric">
+                <p class="metric-label">Slowest Endpoint</p>
+                <div>
+                    <p class="metric-value" id="slowestPath">--</p>
+                    <span class="metric-sub">Highest latency</span>
+                </div>
+            </article>
+
+            <article class="card metric">
+                <p class="metric-label">Average Endpoint Time</p>
+                <div>
+                    <p class="metric-value" id="averageTime">--</p>
+                    <span class="metric-sub">Cross-route mean</span>
+                </div>
+            </article>
+
+            <article class="card metric">
+                <p class="metric-label">Last Updated</p>
+                <div>
+                    <p class="metric-value" id="lastUpdated">--</p>
+                    <span class="metric-sub" id="modeState">Light</span>
+                </div>
+            </article>
+
+            <article class="card panel">
+                <div class="panel-top">
+                    <h2 class="panel-title">Analytics Explorer</h2>
+                    <div class="tabs" role="tablist" aria-label="Output views">
+                        <button type="button" class="active" data-view="cards">Cards</button>
+                        <button type="button" data-view="json">JSON</button>
+                    </div>
+                </div>
+
+                <div class="search-row">
+                    <input id="endpointFilter" type="text" placeholder="Filter endpoint path (example: /test)" aria-label="Filter endpoint path" />
+                    <button type="button" class="btn secondary" id="copyBtn">Copy JSON</button>
+                </div>
+
+                <div class="output" id="outputPanel">
+                    <p class="placeholder">Load analytics to inspect route cards, heat levels, and raw response JSON.</p>
+                </div>
+            </article>
+
+            <aside class="side">
+                <article class="card side-box">
+                    <h3 class="panel-title">Optimization Signals</h3>
+                    <div id="suggestionsList" class="kpi-list">
+                        <p class="placeholder">Signals appear after data loads.</p>
+                    </div>
+                </article>
+
+                <article class="card side-box">
+                    <h3 class="panel-title">Latency Trend</h3>
+                    <div class="spark" id="sparkWrap"></div>
+                    <p class="mini-note">Trend uses sampled route average times from the latest payload.</p>
+                </article>
+            </aside>
+        </section>
+    </main>
+
+    <div class="palette" id="palette" aria-hidden="true">
+        <div class="palette-panel" role="dialog" aria-modal="true" aria-label="Command palette">
+            <div class="palette-header">
+                <input id="paletteInput" type="text" placeholder="Type a command..." aria-label="Command palette input" />
+            </div>
+            <div class="command-list" id="commandList"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const state = {
+            data: null,
+            view: "cards",
+            filter: "",
+            autoRefresh: false,
+            autoTimer: null,
+            commandCursor: 0,
+            theme: "light"
+        };
+
+        const $ = (id) => document.getElementById(id);
+
+        const themeToggle = $("themeToggle");
+        const themeLabel = $("themeLabel");
+        const modeState = $("modeState");
+        const loadBtn = $("loadBtn");
+        const runTestsBtn = $("runTestsBtn");
+        const autoToggle = $("autoToggle");
+        const outputPanel = $("outputPanel");
+        const endpointFilter = $("endpointFilter");
+        const copyBtn = $("copyBtn");
+        const suggestionsList = $("suggestionsList");
+        const totalRequests = $("totalRequests");
+        const slowestPath = $("slowestPath");
+        const averageTime = $("averageTime");
+        const lastUpdated = $("lastUpdated");
+        const toast = $("toast");
+        const palette = $("palette");
+        const paletteInput = $("paletteInput");
+        const commandList = $("commandList");
+        const sparkWrap = $("sparkWrap");
+        const viewButtons = Array.from(document.querySelectorAll("[data-view]"));
+
+        const commands = [
+            { id: "load", label: "Load analytics now", run: () => loadData() },
+            { id: "tests", label: "Run backend tests", run: () => runTests() },
+            { id: "copy", label: "Copy latest JSON", run: () => copyJson() },
+            { id: "theme", label: "Toggle theme", run: () => toggleTheme() },
+            { id: "auto", label: "Toggle auto refresh", run: () => toggleAutoRefresh() },
+            { id: "view-cards", label: "Switch to cards view", run: () => setView("cards") },
+            { id: "view-json", label: "Switch to JSON view", run: () => setView("json") }
+        ];
+
+        function showToast(text) {
+            toast.textContent = text;
+            toast.classList.add("show");
+            window.setTimeout(() => toast.classList.remove("show"), 1600);
+        }
+
+        function formatTime(value) {
+            const num = Number(value);
+            if (Number.isNaN(num)) {
+                return "--";
+            }
+            return `${num.toFixed(4)}s`;
+        }
+
+        function stampNow() {
+            return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        }
+
+        function setTheme(theme) {
+            state.theme = theme;
+            document.documentElement.dataset.theme = theme;
+            localStorage.setItem("ao-theme", theme);
+            themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
+            themeLabel.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+            modeState.textContent = theme === "dark" ? "Dark mode" : "Light mode";
+        }
+
+        function toggleTheme() {
+            setTheme(state.theme === "dark" ? "light" : "dark");
+        }
+
+        function setMetrics(data) {
+            const hits = data.endpoint_hits || {};
+            const avgMap = data.average_time || {};
+            const slowest = data.slowest_api || {};
+
+            totalRequests.textContent = data.total_requests ?? "--";
+            slowestPath.textContent = slowest.path ? `${slowest.path} (${formatTime(slowest.time)})` : "--";
+
+            const values = Object.values(avgMap).map(Number).filter((v) => !Number.isNaN(v));
+            const avg = values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : NaN;
+            averageTime.textContent = Number.isNaN(avg) ? "--" : formatTime(avg);
+            lastUpdated.textContent = stampNow();
+
+            const suggestionEntries = Object.entries(data.suggestions || {});
+            if (!suggestionEntries.length) {
+                suggestionsList.innerHTML = '<p class="placeholder">No optimization suggestions yet.</p>';
+            } else {
+                suggestionsList.innerHTML = suggestionEntries
+                    .map(([path, message]) => {
+                        const warn = message.toLowerCase().includes("slow");
+                        return `
+                            <div class="kpi-item">
+                                <span>${path}</span>
+                                <span class="status ${warn ? "warn" : "good"}">${warn ? "Needs work" : "Healthy"}</span>
+                            </div>
+                        `;
+                    })
+                    .join("");
+            }
+
+            drawSparkline(avgMap, hits);
+        }
+
+        function drawSparkline(avgMap, hits) {
+            const entries = Object.entries(avgMap)
+                .map(([path, value]) => ({
+                    path,
+                    value: Number(value),
+                    hits: Number(hits[path] || 0)
+                }))
+                .filter((item) => !Number.isNaN(item.value))
+                .sort((a, b) => b.hits - a.hits)
+                .slice(0, 10);
+
+            if (!entries.length) {
+                sparkWrap.innerHTML = "<p class='placeholder'>No trend data yet.</p>";
+                return;
+            }
+
+            const max = Math.max(...entries.map((e) => e.value), 0.0001);
+            const points = entries
+                .map((item, index) => {
+                    const x = (index / (entries.length - 1 || 1)) * 100;
+                    const y = 100 - (item.value / max) * 85;
+                    return `${x},${y}`;
+                })
+                .join(" ");
+
+            sparkWrap.innerHTML = `
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Latency sparkline">
+                    <polyline fill="none" stroke="var(--li-blue)" stroke-width="2.8" points="${points}" />
+                </svg>
+            `;
+        }
+
+        function renderCards(data) {
+            const hits = data.endpoint_hits || {};
+            const avgMap = data.average_time || {};
+            const filter = state.filter.toLowerCase().trim();
+
+            let entries = Object.keys(hits).map((path) => ({
+                path,
+                hits: Number(hits[path] || 0),
+                avg: Number(avgMap[path] || 0)
+            }));
+
+            entries = entries.sort((a, b) => b.avg - a.avg);
+            if (filter) {
+                entries = entries.filter((item) => item.path.toLowerCase().includes(filter));
+            }
+
+            if (!entries.length) {
+                outputPanel.innerHTML = '<p class="placeholder">No routes match the current filter.</p>';
+                return;
+            }
+
+            const maxAvg = Math.max(...entries.map((item) => item.avg), 0.0001);
+            outputPanel.innerHTML = `
+                <div class="route-grid">
+                    ${entries
+                        .map((item) => {
+                            const heat = Math.max(6, Math.round((item.avg / maxAvg) * 100));
+                            return `
+                                <article class="route-item">
+                                    <div>
+                                        <p class="route-name">${item.path}</p>
+                                        <p class="route-meta">${item.hits} hits • ${formatTime(item.avg)}</p>
+                                    </div>
+                                    <strong>${heat}%</strong>
+                                    <div class="heat-wrap">
+                                        <div class="heat-bar" style="width:${heat}%"></div>
+                                    </div>
+                                </article>
+                            `;
+                        })
+                        .join("")}
+                </div>
+            `;
+        }
+
+        function renderJson(data) {
+            outputPanel.innerHTML = `<pre class="json-view">${JSON.stringify(data, null, 2)}</pre>`;
+        }
+
+        function renderOutput() {
+            if (!state.data) {
+                outputPanel.innerHTML = '<p class="placeholder">Load analytics to inspect route cards, heat levels, and raw response JSON.</p>';
+                return;
+            }
+
+            if (state.view === "json") {
+                renderJson(state.data);
+            } else {
+                renderCards(state.data);
+            }
+        }
+
+        function setView(view) {
+            state.view = view;
+            viewButtons.forEach((button) => {
+                button.classList.toggle("active", button.dataset.view === view);
+            });
+            renderOutput();
+        }
+
+        async function loadData() {
+            outputPanel.innerHTML = '<p class="placeholder">Loading analytics...</p>';
+            try {
+                const response = await fetch("/analytics");
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                state.data = await response.json();
+                setMetrics(state.data);
+                renderOutput();
+                showToast("Analytics loaded");
+            } catch (error) {
+                outputPanel.innerHTML = `<p class="placeholder">Error loading analytics: ${error.message}</p>`;
+                showToast("Failed to load analytics");
+            }
+        }
+
+        async function runTests() {
+            runTestsBtn.disabled = true;
+            runTestsBtn.textContent = "Running...";
+            try {
+                const response = await fetch("/run-tests");
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const result = await response.json();
+                showToast(result.message || "Tests completed");
+                await loadData();
+            } catch (error) {
+                showToast(`Test run failed: ${error.message}`);
+            } finally {
+                runTestsBtn.disabled = false;
+                runTestsBtn.textContent = "Run Tests";
+            }
+        }
+
+        async function copyJson() {
+            if (!state.data) {
+                showToast("No JSON data to copy");
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(state.data, null, 2));
+                showToast("JSON copied");
+            } catch (_error) {
+                showToast("Clipboard blocked in this context");
+            }
+        }
+
+        function toggleAutoRefresh() {
+            state.autoRefresh = !state.autoRefresh;
+            autoToggle.textContent = `Auto refresh: ${state.autoRefresh ? "On" : "Off"}`;
+
+            if (state.autoTimer) {
+                clearInterval(state.autoTimer);
+                state.autoTimer = null;
+            }
+
+            if (state.autoRefresh) {
+                state.autoTimer = setInterval(() => {
+                    loadData();
+                }, 12000);
+                showToast("Auto refresh enabled");
+            } else {
+                showToast("Auto refresh disabled");
+            }
+        }
+
+        function openPalette() {
+            renderCommands(commands, "");
+            palette.classList.add("open");
+            palette.setAttribute("aria-hidden", "false");
+            paletteInput.value = "";
+            state.commandCursor = 0;
+            window.setTimeout(() => paletteInput.focus(), 0);
+        }
+
+        function closePalette() {
+            palette.classList.remove("open");
+            palette.setAttribute("aria-hidden", "true");
+        }
+
+        function renderCommands(source, term) {
+            const query = term.toLowerCase().trim();
+            const filtered = source.filter((command) => command.label.toLowerCase().includes(query));
+            if (!filtered.length) {
+                commandList.innerHTML = '<p class="placeholder" style="padding:8px;">No matching commands.</p>';
+                return;
+            }
+
+            if (state.commandCursor >= filtered.length) {
+                state.commandCursor = filtered.length - 1;
+            }
+
+            commandList.innerHTML = filtered
+                .map((command, index) => `
+                    <button class="command-item ${index === state.commandCursor ? "active" : ""}" data-cmd="${command.id}" type="button">
+                        ${command.label}
+                    </button>
+                `)
+                .join("");
+
+            Array.from(commandList.querySelectorAll(".command-item")).forEach((button) => {
+                button.addEventListener("click", () => {
+                    const cmd = filtered.find((item) => item.id === button.dataset.cmd);
+                    if (cmd) {
+                        closePalette();
+                        cmd.run();
+                    }
+                });
+            });
+        }
+
+        function executeCurrentCommand() {
+            const query = paletteInput.value.toLowerCase().trim();
+            const filtered = commands.filter((command) => command.label.toLowerCase().includes(query));
+            const cmd = filtered[state.commandCursor];
+            if (!cmd) {
+                return;
+            }
+            closePalette();
+            cmd.run();
+        }
+
+        function bootstrap() {
+            const storedTheme = localStorage.getItem("ao-theme");
+            setTheme(storedTheme === "dark" ? "dark" : "light");
+            setView("cards");
+
+            themeToggle.addEventListener("click", toggleTheme);
+            loadBtn.addEventListener("click", loadData);
+            runTestsBtn.addEventListener("click", runTests);
+            autoToggle.addEventListener("click", toggleAutoRefresh);
+            copyBtn.addEventListener("click", copyJson);
+
+            viewButtons.forEach((button) => {
+                button.addEventListener("click", () => setView(button.dataset.view));
+            });
+
+            endpointFilter.addEventListener("input", (event) => {
+                state.filter = event.target.value;
+                if (state.view === "cards") {
+                    renderOutput();
+                }
+            });
+
+            document.addEventListener("keydown", (event) => {
+                const isPaletteShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
+                if (isPaletteShortcut) {
+                    event.preventDefault();
+                    if (palette.classList.contains("open")) {
+                        closePalette();
+                    } else {
+                        openPalette();
+                    }
+                    return;
+                }
+
+                if (!palette.classList.contains("open")) {
+                    return;
+                }
+
+                if (event.key === "Escape") {
+                    closePalette();
+                }
+
+                const query = paletteInput.value.toLowerCase().trim();
+                const filtered = commands.filter((command) => command.label.toLowerCase().includes(query));
+
+                if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    state.commandCursor = Math.min(state.commandCursor + 1, Math.max(filtered.length - 1, 0));
+                    renderCommands(commands, paletteInput.value);
+                }
+
+                if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    state.commandCursor = Math.max(state.commandCursor - 1, 0);
+                    renderCommands(commands, paletteInput.value);
+                }
+
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    executeCurrentCommand();
+                }
+            });
+
+            palette.addEventListener("click", (event) => {
+                if (event.target === palette) {
+                    closePalette();
+                }
+            });
+
+            paletteInput.addEventListener("input", (event) => {
+                state.commandCursor = 0;
+                renderCommands(commands, event.target.value);
+            });
+        }
+
+        bootstrap();
+    </script>
+</body>
+</html>

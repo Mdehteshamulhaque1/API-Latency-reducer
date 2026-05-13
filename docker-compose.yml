@@ -1,0 +1,103 @@
+"""
+Docker Compose configuration for development environment.
+Includes FastAPI, MySQL, Redis, and optional Celery workers.
+"""
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: api-optimizer-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: api_optimizer
+      MYSQL_USER: optimizer
+      MYSQL_PASSWORD: password123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: api-optimizer-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: api-optimizer-backend
+    environment:
+      DATABASE_URL: mysql+pymysql://optimizer:password123@mysql:3306/api_optimizer
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      DEBUG: "False"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker (optional)
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: api-optimizer-celery
+    environment:
+      DATABASE_URL: mysql+pymysql://optimizer:password123@mysql:3306/api_optimizer
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks worker -l info
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: api-optimizer-celery-beat
+    environment:
+      DATABASE_URL: mysql+pymysql://optimizer:password123@mysql:3306/api_optimizer
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks beat -l info
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  default:
+    name: api-optimizer-network

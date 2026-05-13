@@ -1,0 +1,38 @@
+## Root .gitignore for API-Latency-reducer
+
+# Python
+/.venv
+env/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Node
+/frontend/node_modules/
+frontend/dist/
+
+# Editor directories
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Build outputs
+dist/
+build/
+
+# Misc
+.pytest_cache/
+/.mypy_cache/
