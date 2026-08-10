@@ -1,0 +1,38 @@
+# Render Blueprint — API Optimizer backend
+#
+# Fill in the environment variables in the Render dashboard on first deploy
+# (they are marked `sync: false` so secrets are never stored in git).
+#
+# Required:
+#   DATABASE_URL     e.g. mysql+aiomysql://USER:PASS@HOST:3306/api_optimizer
+#   REDIS_URL        e.g. rediss://default:PASS@host:6379/0
+#   SECRET_KEY       random string >= 32 chars (one per environment)
+#   ADMIN_EMAIL      initial admin login
+#   ADMIN_PASSWORD   initial admin login
+# Recommended:
+#   CORS_ORIGINS     JSON array of allowed browser origins (the deployed dashboards)
+#   DATABASE_POOL_SIZE / DATABASE_MAX_OVERFLOW  keep low for free-tier MySQL
+
+services:
+  - type: web
+    name: api-optimizer
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python migrate_db.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
