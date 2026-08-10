@@ -54,7 +54,7 @@ Middleware order is deliberate: **Auth runs outside the rate limiter** so the li
 | 🔐 JWT authentication | Access (30m) and refresh (7d) tokens with strict type validation |
 | 📈 Performance monitoring | p50 / p95 / p99 latency, slow-endpoint rankings |
 | 🛡 Role-based access control | Admin, operator, and viewer roles gate every mutation |
-| 🐳 Docker support | Single-container deploy with health checks (`render.yaml` included) |
+| 🐳 Docker support | Single-container deploy with health checks (`docker-compose.yml` + `render.yaml`) |
 | 📋 API documentation | Auto-generated interactive OpenAPI docs at `/docs` |
 
 ## Tech Stack
@@ -62,12 +62,12 @@ Middleware order is deliberate: **Auth runs outside the rate limiter** so the li
 | Layer | Technology |
 | --- | --- |
 | Backend | FastAPI (async) |
-| Language | Python 3.11+ (verified on 3.14) |
+| Language | Python 3.11+ |
 | Database | SQLAlchemy 2.0 async — SQLite (local, default) or MySQL |
 | Cache / queue | Redis |
 | Authentication | JWT (`python-jose`) |
 | Task queue | Celery (optional — app boots without a broker) |
-| Frontend (dashboard) | React + Vite + Recharts |
+| Frontend (dashboard) | React + Vite + Recharts + Tailwind |
 | Frontend (marketing site) | Next.js 14 + Tailwind + Framer Motion |
 | Container | Docker |
 
@@ -85,15 +85,18 @@ Middleware order is deliberate: **Auth runs outside the rate limiter** so the li
 │   ├── services/        # Business logic: analytics, auth, cache, rate_limit
 │   ├── tasks/           # Celery background tasks
 │   └── utils/           # Logging, Redis client
-├── frontend/            # React dashboard (Vite)
-├── site/                # Next.js marketing site
+├── frontend/            # React dashboard (Vite) — deploys to Vercel
+├── site/                # Next.js marketing site — deploys to Vercel
 ├── tests/               # pytest suite (JWT token-type security tests)
+├── loadtest/            # k6 load-test benchmark script
 ├── migrate_db.py        # Creates tables + default admin user
 ├── setup_mysql.py       # One-shot MySQL setup helper
+├── seed_demo.py         # Seeds demo users, rules, and the /api/v1/demo/latency endpoint
 ├── test_api.py          # End-to-end API smoke tests
 ├── requirements.txt
 ├── Dockerfile
-├── render.yaml          # Render.com deploy config
+├── docker-compose.yml   # Backend + Redis + frontend (local)
+├── render.yaml          # Render.com deploy config (backend)
 └── .env.example         # Backend env template
 ```
 
@@ -102,10 +105,11 @@ Middleware order is deliberate: **Auth runs outside the rate limiter** so the li
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+ (for the frontend and site)
 - Redis (local install or managed instance)
 - MySQL only if you want production storage — the app runs on SQLite out of the box
 
-### 1. Configure environment
+### 1. Configure backend environment
 
 Copy the sample environment variables into `.env`:
 
@@ -154,6 +158,8 @@ npm install
 npm run dev                      # http://localhost:5173 (proxies /api to :8000)
 ```
 
+The dashboard's API base URL and docs link are configurable at build time via `VITE_API_URL` / `VITE_DOCS_URL` (see `frontend/src/lib/config.js`). With neither set, it uses relative `/api/v1` — which works out of the box with the Vite dev proxy above.
+
 ### 5. Run the marketing site (Next.js)
 
 ```bash
@@ -163,27 +169,45 @@ npm run lint                     # eslint
 npm run dev                      # http://localhost:3000
 ```
 
-### Docker
+### Docker (backend + Redis + frontend)
+
+```bash
+docker-compose up --build        # backend :8000, frontend :5173, Redis
+```
+
+Or build the backend image alone:
 
 ```bash
 docker build -t api-optimizer .
 docker run -p 8000:8000 --env-file .env api-optimizer
 ```
 
-## Deployment (Render)
+## Deployment
+
+### Backend → Render
 
 `render.yaml` ships in the repo. It builds the backend image, runs `python migrate_db.py` as a pre-deploy step, and health-checks `/api/v1/health`. Set these environment variables in the Render dashboard (never hardcode secrets in the repo):
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | ✅ | `mysql+aiomysql://...` (e.g. Render's managed Postgres/MySQL or a free-tier MySQL) |
+| `DATABASE_URL` | ✅ | `mysql+aiomysql://...` (managed MySQL) or `sqlite+aiosqlite:////data/api_optimizer.db` for a single-instance demo |
 | `REDIS_URL` | ✅ | e.g. Render Redis or Upstash — without it caching/rate-limit fail open |
 | `SECRET_KEY` | ✅ | Unique, ≥ 32 chars, **generated per deployment** |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | ✅ | Seed admin (created by `migrate_db.py`) |
 | `CORS_ORIGINS` | — | JSON array of your deployed dashboard/site origins |
 | `LOG_LEVEL` | — | `INFO` default |
 
-Deploy the `site/` folder (Next.js) and `frontend/` (Vite static) to a static host (Vercel/Netlify/Render static site) and point them at the backend URL via `VITE_API_URL` / `VITE_DOCS_URL`.
+### Frontend + Site → Vercel
+
+Both `frontend/` (Vite static) and `site/` (Next.js) are Vercel-ready. Import each folder as its own project (or use a monorepo setup), then set:
+
+| Variable | Where | Notes |
+| --- | --- | --- |
+| `VITE_API_URL` | frontend | `https://<your-backend>.onrender.com/api/v1` — absolute backend URL, since Vercel has no dev proxy |
+| `VITE_DOCS_URL` | frontend | `https://<your-backend>.onrender.com/docs` |
+| `NEXT_PUBLIC_*` | site | Set only if the site calls the API (currently static) |
+
+Point `CORS_ORIGINS` on the backend at both deployed origins so the browser can call the API.
 
 ## Authentication & Security
 
@@ -208,17 +232,11 @@ pytest -q                      # 44 tests, no external services needed (isolated
 python test_api.py
 ```
 
-The test suite runs entirely against isolated resources — it never touches your
-development Redis or database. Redis must be running locally (it uses db 15);
-the tests use their own SQLite file (`test_api_optimizer.db`). See `pytest.ini`
-and `tests/conftest.py`.
+The test suite runs entirely against isolated resources — it never touches your development Redis or database. Redis must be running locally (it uses db 15); the tests use their own SQLite file (`test_api_optimizer.db`). See `pytest.ini` and `tests/conftest.py`.
 
 ## Load-test benchmark (cache OFF vs ON)
 
-A k6 script drives synthetic traffic at `GET /api/v1/demo/latency`, an endpoint
-that simulates a slow 150 ms upstream call so the caching layer has real work to
-absorb. The script logs in as admin, toggles the demo cache rule, and measures
-both runs under an identical load profile.
+A k6 script drives synthetic traffic at `GET /api/v1/demo/latency`, an endpoint that simulates a slow 150 ms upstream call so the caching layer has real work to absorb. The script logs in as admin, toggles the demo cache rule, and measures both runs under an identical load profile.
 
 ```bash
 # prerequisites: backend running on :8000, Redis up, demo rule seeded
@@ -229,8 +247,7 @@ CACHE=off k6 run loadtest/benchmark.js     # bash:  cache disabled
 CACHE=on  k6 run loadtest/benchmark.js     #        cache enabled
 ```
 
-Env vars: `BASE_URL`, `VUS` (default 20), `DURATION` (default 30s), `SLEEP`,
-`ADMIN_USER` / `ADMIN_PASS`. On Windows PowerShell use `$env:CACHE='off'` first.
+Env vars: `BASE_URL`, `VUS` (default 20), `DURATION` (default 30s), `SLEEP`, `ADMIN_USER` / `ADMIN_PASS`. On Windows PowerShell use `$env:CACHE='off'` first.
 
 ### Results (10 VUs, 30s, same load profile)
 
@@ -241,10 +258,7 @@ Env vars: `BASE_URL`, `VUS` (default 20), `DURATION` (default 30s), `SLEEP`,
 | Throughput | ~35 req/s | ~91 req/s | **~2.6× more** |
 | Cache hit rate | 0% | 99.6% | — |
 
-Run with `VUS=10` (as above) for stable, spike-free numbers on SQLite; higher
-concurrency is bounded by the SQLite write path, not the cache. The demo
-endpoint is deliberately excluded from auth, rate limiting, and analytics
-persistence so the benchmark isolates the caching layer.
+Run with `VUS=10` (as above) for stable, spike-free numbers on SQLite; higher concurrency is bounded by the SQLite write path, not the cache. The demo endpoint is deliberately excluded from auth, rate limiting, and analytics persistence so the benchmark isolates the caching layer.
 
 ## CI/CD (GitHub Actions)
 
