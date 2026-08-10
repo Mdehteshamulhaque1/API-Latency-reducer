@@ -1,5 +1,4 @@
 import { useRef } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import {
   Zap,
@@ -12,8 +11,6 @@ import {
   Sparkles,
   Database,
   Globe,
-  Layers,
-  KeyRound,
   CheckCircle2,
   Quote,
   Activity,
@@ -38,6 +35,7 @@ import SectionHeading from '../components/SectionHeading'
 import AnimatedCounter from '../components/AnimatedCounter'
 import Blob from '../components/Blob'
 import Logo from '../components/Logo'
+import Pipeline3D from '../components/Pipeline3D'
 import { DOCS_URL } from '../lib/config'
 
 /* ------------------------------------------------------------------ */
@@ -47,7 +45,20 @@ import { DOCS_URL } from '../lib/config'
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2200&auto=format&fit=crop'
 
-const heroWords = ['Cut', 'latency.', 'Ship', 'faster.']
+const heroContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.14, delayChildren: 0.15 } },
+}
+
+const heroWord = {
+  hidden: { opacity: 0, y: 30, filter: 'blur(6px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
+  },
+}
 
 function Hero() {
   const ref = useRef(null)
@@ -75,67 +86,61 @@ function Hero() {
 
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="mx-auto max-w-3xl">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-4 py-1.5 text-xs font-semibold text-brand-600 shadow-sm backdrop-blur"
-            >
-              <Sparkles size={14} />
-              High-Performance API Optimization Platform
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-4 py-1.5 text-xs font-semibold text-brand-600 shadow-sm backdrop-blur"
+          >
+            <Sparkles size={14} />
+            High-Performance API Optimization Platform
+          </motion.div>
 
-            <h1 className="font-display mt-6 text-4xl font-bold leading-[1.08] tracking-tight text-slate-900 sm:text-6xl lg:text-7xl">
-              {heroWords.map((w, i) => (
-                <span key={i} className="inline-block overflow-hidden pb-1 align-top">
-                  <motion.span
-                    className={`mr-3 inline-block ${
-                      i === 1 || i === 3 ? 'shimmer-text' : ''
-                    }`}
-                    initial={{ y: '110%' }}
-                    animate={{ y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.15 + i * 0.12, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    {w}
-                  </motion.span>
-                </span>
-              ))}
-            </h1>
+          <h1 className="font-display mt-6 text-[clamp(2.2rem,4.8vw,4rem)] font-bold leading-[1.02] tracking-tight text-slate-900">
+            <motion.span variants={heroContainer} initial="hidden" animate="visible" className="block">
+              <motion.span variants={heroWord} className="inline-block whitespace-nowrap">
+                Cut <span className="shimmer-text">latency.</span>{' '}
+              </motion.span>
+              <motion.span variants={heroWord} className="inline-block whitespace-nowrap">
+                Ship <span className="shimmer-text">faster.</span>
+              </motion.span>
+            </motion.span>
+          </h1>
 
-            <motion.p
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.65 }}
-              className="mt-6 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg"
-            >
-              Redis-backed response caching, intelligent token-bucket rate limiting,
-              bulletproof JWT authentication, and real-time analytics — fused into one
-              platform that makes your APIs measurably faster.
-            </motion.p>
+          <motion.p
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.65 }}
+            className="mt-6 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg"
+          >
+            Redis-backed response caching, intelligent token-bucket rate limiting,
+            bulletproof JWT authentication, and real-time analytics — fused into one
+            platform that makes your APIs measurably faster.
+          </motion.p>
 
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.8 }}
-              className="mt-9 flex flex-wrap items-center gap-4"
-            >
-              <Button to="/login" size="lg" icon={ArrowRight}>
-                Launch the dashboard
-              </Button>
-              <Button href="#how-it-works" variant="secondary" size="lg" icon={Activity}>
-                See how it works
-              </Button>
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.8 }}
+            className="mt-9 flex flex-wrap items-center gap-4"
+          >
+            <Button to="/login" size="lg" icon={ArrowRight}>
+              Launch the dashboard
+            </Button>
+            <Button href="#how-it-works" variant="secondary" size="lg" icon={Activity}>
+              See how it works
+            </Button>
+          </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 1 }}
-              className="mt-8 flex items-center gap-2 text-sm text-slate-500"
-            >
-              <CheckCircle2 size={16} className="text-emerald-500" />
-              Free to explore · 2-minute setup · Docker ready
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 1 }}
+            className="mt-8 flex items-center gap-2 text-sm text-slate-500"
+          >
+            <CheckCircle2 size={16} className="text-emerald-500" />
+            Free to explore · 2-minute setup · Docker ready
+          </motion.div>
         </div>
       </div>
     </section>
@@ -222,6 +227,7 @@ const features = [
 function Features() {
   return (
     <section id="features" className="relative py-24 sm:py-32">
+      <div className="h-px bg-gradient-to-r from-transparent via-brand-400/40 to-transparent" aria-hidden />
       <Blob className="right-0 top-0" color="brand" size={380} />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeading
@@ -265,83 +271,48 @@ function Features() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  How it works                                                       */
+/*  How it works — 3D pipeline                                        */
 /* ------------------------------------------------------------------ */
-
-const steps = [
-  {
-    icon: Globe,
-    title: 'Client sends a request',
-    desc: 'A request hits your API — authenticated or anonymous, API-optimizer inspects it immediately.',
-  },
-  {
-    icon: KeyRound,
-    title: 'JWT authenticates',
-    desc: 'Tokens are decoded and type-checked (access vs refresh) before anything else runs.',
-  },
-  {
-    icon: Gauge,
-    title: 'Rate limiter checks quota',
-    desc: 'The token bucket refills continuously and rejects bursts with a clean 429.',
-  },
-  {
-    icon: Database,
-    title: 'Cache lookup in Redis',
-    desc: 'Matching cache rules produce a key; a hit short-circuits the whole stack.',
-  },
-  {
-    icon: Layers,
-    title: 'Business logic + store',
-    desc: 'On a miss, the handler runs and the response is written back to Redis.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Metrics to MySQL',
-    desc: 'Every request is logged and aggregated for dashboards, benchmarks, and alerts.',
-  },
-]
 
 function HowItWorks() {
   return (
-    <section id="how-it-works" className="relative bg-slate-950 py-24 sm:py-32">
-      <div className="bg-dots absolute inset-0 opacity-[0.15]" aria-hidden />
-      <Blob className="-top-24 left-1/4" color="violet" size={420} />
-      <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <SectionHeading
-          light
-          eyebrow="How it works"
-          title={
-            <>
-              From request to response in <span className="shimmer-text">6 steps</span>
-            </>
-          }
-          description="A defensive, layered pipeline that rejects bad traffic early and never wastes work on cached responses."
-        />
+    <section id="how-it-works" className="relative overflow-hidden bg-slate-950 py-24 sm:py-32">
+      <div className="bg-dots absolute inset-0 opacity-[0.12]" aria-hidden />
+      <div
+        className="absolute inset-0 bg-[radial-gradient(55%_45%_at_55%_25%,rgba(34,211,238,0.14),transparent_70%)]"
+        aria-hidden
+      />
+      <div className="h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" aria-hidden />
+      <Blob className="-top-24 right-1/4" color="cyan" size={420} />
 
-        <div className="relative mt-16">
-          {/* connecting line */}
-          <div className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-brand-500/50 to-transparent lg:block" />
-          <div className="grid gap-10 lg:grid-cols-2 lg:gap-x-20 lg:gap-y-14">
-            {steps.map((s, i) => (
-              <Reveal key={s.title} delay={(i % 2) * 0.15} className={i % 2 === 1 ? 'lg:pl-14' : 'lg:pr-14'}>
-                <div className={`flex gap-5 ${i % 2 === 1 ? 'lg:flex-row-reverse lg:text-right' : ''}`}>
-                  <div className="relative shrink-0">
-                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-white backdrop-blur transition-transform duration-300 hover:scale-110">
-                      <s.icon size={22} />
-                    </span>
-                    <span className="absolute -inset-1.5 -z-10 animate-pulse-ring rounded-2xl border border-brand-500/40" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.25em] text-brand-300">
-                      Step {i + 1}
-                    </p>
-                    <h3 className="font-display mt-2 text-lg font-bold text-white">{s.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-400">{s.desc}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
+      <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
+        <div className="grid items-center gap-14 lg:grid-cols-2">
+          <div>
+            <SectionHeading
+              light
+              tone="cyan"
+              align="left"
+              eyebrow="How it works"
+              title={
+                <>
+                  Watch a request fly through the{' '}
+                  <span className="shimmer-text">pipeline in 3D</span>
+                </>
+              }
+              description="Move your cursor over the scene to tilt it. Every request is authenticated, throttled, then cache-checked — hits return instantly, misses pay one database round-trip."
+            />
+            <div className="mt-8 flex flex-wrap gap-2">
+              {['Auth', 'Rate limit', 'Cache', 'Redis', 'MySQL'].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-cyan-400/20 bg-cyan-400/5 px-3.5 py-1.5 text-xs font-medium text-cyan-200/80"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
+          <Pipeline3D />
         </div>
       </div>
     </section>
@@ -375,12 +346,20 @@ const archLayers = [
 
 function Architecture() {
   return (
-    <section id="architecture" className="relative overflow-hidden bg-slate-50 py-24 sm:py-32">
+    <section id="architecture" className="relative overflow-hidden bg-violet-50/50 py-24 sm:py-32">
       <div className="bg-grid-slate absolute inset-0" aria-hidden />
+      <div className="h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" aria-hidden />
+      <Blob className="-right-20 top-10" color="violet" size={400} />
       <div className="relative mx-auto max-w-5xl px-5 sm:px-8">
         <SectionHeading
+          tone="violet"
           eyebrow="Architecture"
-          title="A layered pipeline that stays fast under load"
+          title={
+            <>
+              A layered pipeline that stays{' '}
+              <span className="text-gradient-violet">fast under load</span>
+            </>
+          }
           description="Each request flows through a linear, non-blocking chain — anything cached or throttled never touches your database."
         />
 
@@ -406,7 +385,7 @@ function Architecture() {
                   {layer.chips.map((c) => (
                     <span
                       key={c}
-                      className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
+                      className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-violet-300 hover:text-violet-600"
                     >
                       {c}
                     </span>
@@ -447,14 +426,21 @@ const metrics = [
 function Metrics() {
   return (
     <section id="metrics" className="relative overflow-hidden bg-white py-24 sm:py-32">
+      <div className="h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" aria-hidden />
       <Blob className="-left-24 bottom-0" color="brand" size={420} />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
         <div className="grid items-center gap-14 lg:grid-cols-2">
           <div>
             <SectionHeading
+              tone="emerald"
               align="left"
               eyebrow="Metrics"
-              title="Prove the impact, not just the effort"
+              title={
+                <>
+                  Prove the impact,{' '}
+                  <span className="text-gradient-emerald">not just the effort</span>
+                </>
+              }
               description="API Optimizer computes everything with SQL-side aggregations, so dashboards stay instant even with millions of logged requests."
             />
             <div className="mt-10 grid grid-cols-2 gap-5">
@@ -487,7 +473,7 @@ function Metrics() {
                 <h3 className="font-display text-lg font-bold text-slate-900">
                   Latency distribution
                 </h3>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
                   <Timer size={13} /> last 24h
                 </span>
               </div>
@@ -556,11 +542,18 @@ const testimonials = [
 
 function Testimonials() {
   return (
-    <section id="testimonials" className="bg-slate-50 py-24 sm:py-32">
+    <section id="testimonials" className="bg-rose-50/50 py-24 sm:py-32">
+      <div className="h-px bg-gradient-to-r from-transparent via-rose-400/40 to-transparent" aria-hidden />
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeading
+          tone="rose"
           eyebrow="Testimonials"
-          title="Loved by teams that ship APIs"
+          title={
+            <>
+              Loved by teams that{' '}
+              <span className="text-gradient-rose">ship APIs</span>
+            </>
+          }
           description="Engineers, platform leads, and CTOs use API Optimizer to keep their backends fast under real traffic."
         />
         <div className="mt-16 grid gap-6 md:grid-cols-3">
@@ -570,7 +563,7 @@ function Testimonials() {
                 whileHover={{ y: -8 }}
                 className="card card-hover relative flex h-full flex-col p-7"
               >
-                <Quote size={30} className="text-brand-200" fill="currentColor" />
+                <Quote size={30} className="text-rose-200" fill="currentColor" />
                 <blockquote className="mt-4 flex-1 text-sm leading-relaxed text-slate-600">
                   “{t.quote}”
                 </blockquote>
