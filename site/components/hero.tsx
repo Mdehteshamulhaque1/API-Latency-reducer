@@ -1,13 +1,12 @@
 "use client"
 
 import { motion, type Variants } from "framer-motion"
-import { ArrowDown, ArrowUpRight } from "lucide-react"
+import { ArrowDown } from "lucide-react"
 
 import { Aurora, GridBackdrop } from "@/components/backgrounds"
 import { LivePanel } from "@/components/live-panel"
 import { Button } from "@/components/ui/button"
 import { EASE } from "@/components/motion/reveal"
-import { cn } from "@/lib/utils"
 
 const container: Variants = {
   hidden: {},
@@ -44,7 +43,7 @@ function Phrase({
   accent?: boolean
 }) {
   return (
-    <span className="block">
+    <span className="inline-block">
       <motion.span
         variants={word}
         className="mr-[0.18em] inline-block font-extrabold tracking-[-0.04em] text-zinc-50"
@@ -53,10 +52,7 @@ function Phrase({
       </motion.span>
       <motion.span
         variants={word}
-        className={cn(
-          "inline-block font-normal tracking-[-0.04em]",
-          accent ? "text-gradient font-medium" : "text-zinc-400",
-        )}
+        className={`inline-block font-medium tracking-[-0.04em] ${accent ? "text-gradient" : "text-zinc-400"}`}
       >
         {light}
       </motion.span>
@@ -89,8 +85,8 @@ export function Hero() {
               </span>
             </motion.div>
 
-            <motion.h1 className="mt-6 max-w-2xl text-[clamp(2.8rem,7vw,6rem)] font-medium leading-[0.95] tracking-[-0.03em] text-zinc-50">
-              <Phrase heavy="Cut" light="latency." accent />
+            <motion.h1 className="mt-6 text-[clamp(2.8rem,7vw,6rem)] font-medium leading-[0.95] tracking-[-0.03em] text-zinc-50">
+              <Phrase heavy="Cut" light="latency. " accent />
               <Phrase heavy="Ship" light="faster." accent />
             </motion.h1>
 
@@ -106,12 +102,6 @@ export function Hero() {
               variants={fadeUp}
               className="mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
             >
-              <Button asChild variant="primary" size="lg">
-                <a href="/dashboard">
-                  Launch the dashboard
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Button>
               <Button asChild variant="outline" size="lg">
                 <a href="#how">
                   See how it works

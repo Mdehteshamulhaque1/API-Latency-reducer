@@ -79,11 +79,12 @@ export function ArchitectureDiagram() {
     <section id="architecture" className="relative scroll-mt-24 py-24">
       <div className="container">
         <SectionHeading
+          tone="violet"
           eyebrow="02 · architecture"
           title={
             <>
               See a request travel the
-              <span className="text-gradient"> request pipeline.</span>
+              <span className="text-gradient-violet"> request pipeline.</span>
             </>
           }
           description="Auth, rate limiting, and caching run as middleware — most traffic short-circuits back to the client before ever hitting MySQL."
