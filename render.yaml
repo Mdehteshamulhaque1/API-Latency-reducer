@@ -7,11 +7,12 @@
 #   DATABASE_URL     e.g. mysql+aiomysql://USER:PASS@HOST:3306/api_optimizer
 #   REDIS_URL        e.g. rediss://default:PASS@host:6379/0
 #   SECRET_KEY       random string >= 32 chars (one per environment)
-#   ADMIN_EMAIL      initial admin login
+#   ADMIN_EMAIL      initial admin login (only used the first time tables are created)
 #   ADMIN_PASSWORD   initial admin login
 # Recommended:
 #   CORS_ORIGINS     JSON array of allowed browser origins (the deployed dashboards)
 #   DATABASE_POOL_SIZE / DATABASE_MAX_OVERFLOW  keep low for free-tier MySQL
+#   TRUSTED_PROXIES  JSON array of reverse-proxy IPs that may set X-Forwarded-For
 
 services:
   - type: web
@@ -36,3 +37,12 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: TRUSTED_PROXIES
+        sync: false
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # Demo/load-test endpoints are unauthenticated; keep them off in prod.
+      - key: DEMO_ENDPOINT_ENABLED
+        value: "false"

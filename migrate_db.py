@@ -68,13 +68,11 @@ async def migrate_db():
                     await session.commit()
                     print(f"✅ Admin user created: {ADMIN_EMAIL} (password from .env)")
                 else:
-                    # Keep the configured admin password in sync with .env
-                    result = await session.execute(
-                        text("UPDATE users SET hashed_password = :pw WHERE email = :email"),
-                        {"pw": _hash_password(ADMIN_PASSWORD), "email": ADMIN_EMAIL}
-                    )
-                    await session.commit()
-                    print(f"✅ Admin user exists; password synced to .env value: {ADMIN_EMAIL}")
+                    # Never overwrite an existing password: migrate_db.py runs
+                    # on every deploy and resetting the admin password would
+                    # silently invalidate the current one. Reset it manually
+                    # if you need to.
+                    print(f"ℹ️  Admin user already exists ({ADMIN_EMAIL}); password left unchanged")
             except Exception as seed_error:
                 print(f"⚠️  Warning: Could not seed admin user: {seed_error}")
                 print("   (Tables were created successfully, you can create users manually via API)")

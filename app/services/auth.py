@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 
 from app.core.security import PasswordHandler, JWTHandler
 from app.core.exceptions import (
+    APIException,
     AuthenticationError,
     ResourceNotFoundError,
     ResourceAlreadyExistsError,
@@ -131,8 +132,13 @@ class AuthService:
             
             user_id = int(payload.get("sub"))
             user = await self.get_user(user_id)
-            
+
+            if not user.is_active:
+                raise AuthenticationError("User account is inactive")
+
             # Create new tokens
             return self.create_tokens(user)
+        except APIException:
+            raise
         except Exception as e:
             raise AuthenticationError(f"Invalid refresh token: {str(e)}")

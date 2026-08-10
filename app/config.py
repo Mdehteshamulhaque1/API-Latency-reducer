@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=7, validation_alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
+    # Demo endpoints (e.g. /api/v1/demo/latency) are deliberately
+    # unauthenticated and unthrottled, so they must be off by default in
+    # production and enabled only for demos / load testing.
+    demo_endpoint_enabled: bool = Field(default=False, validation_alias="DEMO_ENDPOINT_ENABLED")
+
+    # Proxy IPs allowed to set the X-Forwarded-For header (rate limiting).
+    # Leave empty in production unless the app sits behind a reverse proxy
+    # whose addresses are listed here.
+    trusted_proxies: List[str] = Field(default=[], validation_alias="TRUSTED_PROXIES")
+
     # Celery (optional: the app boots without a broker; tasks are only
     # scheduled when a celery worker is actually started)
     celery_broker_url: Optional[str] = Field(default=None, validation_alias="CELERY_BROKER_URL")
@@ -69,9 +79,27 @@ class Settings(BaseSettings):
     @field_validator("secret_key")
     @classmethod
     def validate_secret_key(cls, v):
-        """Ensure secret key is long enough for production."""
+        """Ensure secret key is long and not a well-known placeholder."""
         if len(v) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long")
+        normalized = v.strip().lower().replace(" ", "")
+        if normalized in {
+            "change-me-to-a-long-random-string",
+            "change-me-in-production",
+            "changeme",
+            "secret",
+            "changethis",
+            "changethisnow",
+        }:
+            raise ValueError("SECRET_KEY must not be a known placeholder value")
+        return v
+
+    @field_validator("algorithm")
+    @classmethod
+    def validate_algorithm(cls, v):
+        """Pin the JWT signing algorithm to HS256."""
+        if v != "HS256":
+            raise ValueError("Only the HS256 JWT algorithm is supported")
         return v
 
 

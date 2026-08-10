@@ -114,6 +114,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     token = credentials.credentials
     try:
         payload = JWTHandler.decode_token(token)
+        JWTHandler.verify_token_type(payload, "access")
         user_id: str = payload.get("sub")
         if user_id is None:
             raise AuthenticationError("Invalid token claims")

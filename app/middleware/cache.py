@@ -71,12 +71,16 @@ class CacheMiddleware(BaseHTTPMiddleware):
         async for chunk in response.body_iterator:
             body_bytes += chunk
 
+        original_background = getattr(response, "background", None)
+
         response = Response(
             content=body_bytes,
             status_code=response.status_code,
             headers=dict(response.headers),
             media_type=response.media_type,
         )
+        if original_background is not None:
+            response.background = original_background
 
         await self._cache_response(cache_rule, request, response, cache_service, cache_key, body_bytes)
         return response
@@ -150,14 +154,20 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
     def _build_cache_key(self, rule: CacheRule, request: Request) -> str:
         cache_service = CacheService(redis_client)
+        user_id = getattr(request.state, "user_id", None)
+        # Authenticated requests are always scoped per user so a cached
+        # response for one user can never be served to another, regardless of
+        # the rule's `cache_by_user` flag. Only anonymous requests share cache
+        # entries across clients.
+        cache_by_user = True if user_id is not None else rule.cache_by_user
         query_params = dict(request.query_params) if rule.cache_by_query_params else None
         headers = dict(request.headers) if rule.cache_by_headers else None
         base_key = cache_service._generate_cache_key(
             endpoint=request.url.path,
-            cache_by_user=rule.cache_by_user,
+            cache_by_user=cache_by_user,
             cache_by_params=rule.cache_by_query_params,
             cache_by_headers=rule.cache_by_headers,
-            user_id=getattr(request.state, "user_id", None),
+            user_id=user_id,
             query_params=query_params,
             headers=headers,
         )

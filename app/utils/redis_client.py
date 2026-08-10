@@ -169,6 +169,20 @@ class RedisClient:
             logger.error(f"Redis KEYS error: {str(e)}")
             return []
 
+    async def scan_iter(self, pattern: str = "*", count: int = 100):
+        """
+        Iterate keys matching a pattern without blocking the server.
+
+        Unlike KEYS, SCAN is incremental and safe to run in production.
+        """
+        if not self.client:
+            raise RedisError("Redis client not initialized")
+        try:
+            async for key in self.client.scan_iter(match=pattern, count=count):
+                yield key
+        except RedisError as e:
+            logger.error(f"Redis SCAN error for pattern {pattern}: {str(e)}")
+
     async def eval(self, script: str, keys: list, args: list):
         """Execute a Lua script atomically."""
         if not self.client:

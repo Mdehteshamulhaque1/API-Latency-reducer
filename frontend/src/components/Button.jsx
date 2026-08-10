@@ -53,7 +53,7 @@ export default function Button({
   if (to) {
     return (
       <motion.span whileTap={{ scale: 0.97 }}>
-        <Link to={to} className={base}>
+        <Link to={to} onClick={onClick} className={base}>
           <ButtonInner variant={variant} size={size} icon={icon}>
             {children}
           </ButtonInner>
@@ -63,8 +63,15 @@ export default function Button({
   }
 
   if (href) {
+    const isAnchor = href.startsWith('#')
     return (
-      <motion.a whileTap={{ scale: 0.97 }} href={href} target="_blank" rel="noreferrer" className={base}>
+      <motion.a
+        whileTap={{ scale: 0.97 }}
+        href={href}
+        onClick={onClick}
+        {...(isAnchor ? {} : { target: '_blank', rel: 'noreferrer' })}
+        className={base}
+      >
         <ButtonInner variant={variant} size={size} icon={icon}>
           {children}
         </ButtonInner>

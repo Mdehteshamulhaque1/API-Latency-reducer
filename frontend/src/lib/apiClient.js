@@ -1,11 +1,29 @@
 import api from './axios'
 import { mockSummary, mockRules, mockHealth } from './mockData'
 
+function hasToken() {
+  return Boolean(localStorage.getItem('api_access_token'))
+}
+
 async function safe(fn, fallback) {
   try {
     const data = await fn()
     return { data, live: true }
   } catch (err) {
+    const status = err?.response?.status
+
+    // Demo mode has no token, so protected calls always fail with 401 —
+    // never hit the network, just render mock data.
+    if (!hasToken()) {
+      return { data: fallback, live: false }
+    }
+
+    // Auth failures with a token present mean the session is invalid/expired;
+    // surface them so the interceptor can refresh or log the user out rather
+    // than silently showing demo data.
+    if (status === 401 || status === 403) throw err
+
+    // Network errors and 5xx server failures degrade gracefully to demo data.
     const reason = err?.response?.status ?? err?.message ?? 'unknown'
     console.warn(`[API Optimizer] Backend request failed (${reason}); showing demo data.`)
     return { data: fallback, live: false }

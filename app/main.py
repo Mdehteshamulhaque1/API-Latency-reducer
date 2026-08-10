@@ -59,12 +59,17 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
+# Docs and the OpenAPI schema are only exposed in debug mode; in production
+# they would leak endpoint structure and route metadata to attackers.
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Production-grade API optimization system",
     lifespan=lifespan,
     debug=settings.debug,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    openapi_url="/openapi.json" if settings.debug else None,
 )
 
 # Add middleware.

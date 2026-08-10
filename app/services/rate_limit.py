@@ -92,11 +92,21 @@ return 1
             period = int(state.get("period", self.default_period))
             remaining = max(0, int(tokens))
 
+            # Report the real time until the bucket resets (its Redis TTL)
+            # instead of the full configured window.
+            reset_in_seconds = period
+            try:
+                ttl = await self.redis.get_ttl(rate_key)
+                if ttl >= 0:
+                    reset_in_seconds = ttl
+            except Exception:
+                pass
+
             return {
                 "current_requests": max(0, limit - remaining),
                 "limit": limit,
                 "remaining": remaining,
-                "reset_in_seconds": period,
+                "reset_in_seconds": reset_in_seconds,
             }
         except Exception as e:
             logger.error("Rate limit get usage error: %s", str(e))

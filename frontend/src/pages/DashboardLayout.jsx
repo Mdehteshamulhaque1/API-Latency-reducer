@@ -30,7 +30,7 @@ const nav = [
 function Sidebar({ open, onClose }) {
   const { logout } = useAuth()
   const navigate = useNavigate()
-  const { live } = useDashboardData(24)
+  const { live } = useDashboardData()
 
   const content = (
     <div className="flex h-full flex-col bg-white">
@@ -110,11 +110,11 @@ function Sidebar({ open, onClose }) {
   )
 }
 
-export default function DashboardLayout() {
+function DashboardShell() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const { user, demoMode } = useAuth()
-  const { live } = useDashboardData(24)
+  const { live } = useDashboardData()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -123,9 +123,8 @@ export default function DashboardLayout() {
   }, [])
 
   return (
-    <DashboardDataProvider>
-      <div className="min-h-screen bg-slate-50">
-        <Sidebar open={open} onClose={() => setOpen(false)} />
+    <div className="min-h-screen bg-slate-50">
+      <Sidebar open={open} onClose={() => setOpen(false)} />
 
       <div className="lg:pl-64">
         {/* Topbar */}
@@ -177,7 +176,14 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
-      </div>
+    </div>
+  )
+}
+
+export default function DashboardLayout() {
+  return (
+    <DashboardDataProvider>
+      <DashboardShell />
     </DashboardDataProvider>
   )
 }

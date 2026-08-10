@@ -25,6 +25,9 @@ os.environ["ADMIN_EMAIL"] = "admin@example.com"
 os.environ["ADMIN_PASSWORD"] = "admin-pass-123"
 os.environ["RATE_LIMIT_DEFAULT_REQUESTS"] = "5"
 os.environ["RATE_LIMIT_DEFAULT_PERIOD"] = "3600"
+# The cache/rate-limit integration tests exercise the demo latency endpoint,
+# which is disabled by default in production.
+os.environ["DEMO_ENDPOINT_ENABLED"] = "True"
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
