@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { Github, Twitter, Linkedin, Mail, Heart } from 'lucide-react'
+import { Github, Heart } from 'lucide-react'
+import { DOCS_URL } from '../lib/config'
 import Logo from './Logo'
 
 const columns = [
@@ -10,26 +10,12 @@ const columns = [
       { label: 'How it works', href: '#how-it-works' },
       { label: 'Architecture', href: '#architecture' },
       { label: 'Dashboard', href: '/dashboard' },
-      { label: 'API docs', href: 'http://localhost:8000/docs' },
+      { label: 'API docs', href: DOCS_URL },
     ],
   },
   {
     title: 'Resources',
-    links: [
-      { label: 'Documentation', href: '#' },
-      { label: 'Optimization guide', href: '#' },
-      { label: 'Security notes', href: '#' },
-      { label: 'Changelog', href: '#' },
-    ],
-  },
-  {
-    title: 'Company',
-    links: [
-      { label: 'About', href: '#' },
-      { label: 'Blog', href: '#' },
-      { label: 'Careers', href: '#' },
-      { label: 'Contact', href: '#contact' },
-    ],
+    links: [{ label: 'Contact', href: '#contact' }],
   },
 ]
 
@@ -47,16 +33,15 @@ export default function Footer() {
               in a single unified system.
             </p>
             <div className="mt-6 flex gap-3">
-              {[Github, Twitter, Linkedin, Mail].map((Icon, i) => (
-                <a
-                  key={i}
-                  href="#"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:-translate-y-1 hover:border-brand-400 hover:text-brand-600 hover:shadow-md"
-                  aria-label="Social link"
-                >
-                  <Icon size={18} />
-                </a>
-              ))}
+              <a
+                href="https://github.com/Mdehteshamulhaque1/API-Latency-reducer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:-translate-y-1 hover:border-brand-400 hover:text-brand-600 hover:shadow-md"
+                aria-label="GitHub repository"
+              >
+                <Github size={18} />
+              </a>
             </div>
           </div>
 

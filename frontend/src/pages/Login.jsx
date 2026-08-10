@@ -152,9 +152,7 @@ export default function Login() {
                 <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
                 Remember me
               </label>
-              <a href="#" className="font-semibold text-brand-600 hover:text-brand-700">
-                Forgot password?
-              </a>
+              <span className="font-semibold text-slate-400">Forgot password?</span>
             </div>
 
             <Button type="submit" size="lg" className="w-full" disabled={loading} icon={loading ? Loader2 : ArrowRight}>

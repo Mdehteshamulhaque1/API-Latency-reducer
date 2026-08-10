@@ -38,6 +38,7 @@ import SectionHeading from '../components/SectionHeading'
 import AnimatedCounter from '../components/AnimatedCounter'
 import Blob from '../components/Blob'
 import Logo from '../components/Logo'
+import { DOCS_URL } from '../lib/config'
 
 /* ------------------------------------------------------------------ */
 /*  Hero                                                               */
@@ -632,7 +633,7 @@ function CTA() {
             <Button to="/login" size="lg" icon={ArrowRight}>
               Get started — it's free
             </Button>
-            <Button href="http://localhost:8000/docs" variant="secondary" size="lg" icon={PieChart}>
+            <Button href={DOCS_URL} variant="secondary" size="lg" icon={PieChart}>
               Browse the API docs
             </Button>
           </div>
