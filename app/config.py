@@ -2,11 +2,12 @@
 Application configuration management.
 Supports environment-based configuration with validation.
 """
+import json
 from functools import lru_cache
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
 
 
 class Settings(BaseSettings):
@@ -54,7 +55,13 @@ class Settings(BaseSettings):
     # Proxy IPs allowed to set the X-Forwarded-For header (rate limiting).
     # Leave empty in production unless the app sits behind a reverse proxy
     # whose addresses are listed here.
-    trusted_proxies: List[str] = Field(default=[], validation_alias="TRUSTED_PROXIES")
+    # NoDecode keeps the raw env string so the validator below can accept a
+    # JSON array OR a comma-separated list (pydantic-settings would otherwise
+    # hard-crash at startup if the value is not strict JSON).
+    trusted_proxies: Annotated[List[str], NoDecode] = Field(
+        default=[],
+        validation_alias="TRUSTED_PROXIES",
+    )
 
     # Celery (optional: the app boots without a broker; tasks are only
     # scheduled when a celery worker is actually started)
@@ -67,10 +74,27 @@ class Settings(BaseSettings):
     rate_limit_default_period: int = Field(default=3600, validation_alias="RATE_LIMIT_DEFAULT_PERIOD")
 
     # CORS
-    cors_origins: List[str] = Field(
+    cors_origins: Annotated[List[str], NoDecode] = Field(
         default=["http://localhost:3000", "http://localhost:8000"],
         validation_alias="CORS_ORIGINS",
     )
+
+    @field_validator("cors_origins", "trusted_proxies", mode="before")
+    @classmethod
+    def parse_str_list(cls, v):
+        """Accept a JSON array or a comma-separated string from the env."""
+        if isinstance(v, str):
+            value = v.strip()
+            if not value:
+                return []
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return v
 
     # Admin User
     admin_email: str = Field(validation_alias="ADMIN_EMAIL")
