@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans"
 import { JetBrains_Mono } from "next/font/google"
 
 import { Grain } from "@/components/backgrounds"
+import { ScrollProgress } from "@/components/scroll-progress"
 import "./globals.css"
 
 const mono = JetBrains_Mono({
@@ -26,6 +27,7 @@ export default function RootLayout({
     <html lang="en" className={[GeistSans.variable, mono.variable].join(" ")}>
       <body>
         <Grain />
+        <ScrollProgress />
         {children}
       </body>
     </html>

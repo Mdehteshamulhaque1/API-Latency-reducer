@@ -131,11 +131,12 @@ export function MetricsBento() {
     <section id="metrics" className="relative scroll-mt-24 py-24">
       <div className="container">
         <SectionHeading
+          tone="emerald"
           eyebrow="05 · live metrics"
           title={
             <>
               Proof, rendered in
-              <span className="text-gradient"> real numbers.</span>
+              <span className="text-gradient-emerald"> real numbers.</span>
             </>
           }
           description="The pipeline publishes every request to Prometheus-compatible metrics. These are the kind of numbers you'll be looking at."
@@ -164,7 +165,7 @@ export function MetricsBento() {
                   </span>
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-4">
-                  <span className="text-gradient font-mono text-2xl font-extrabold tabular-nums sm:text-[26px]">
+                  <span className="text-gradient-emerald font-mono text-2xl font-extrabold tabular-nums sm:text-[26px]">
                     <CountUp
                       value={c.value}
                       decimals={c.decimals ?? 0}

@@ -19,11 +19,12 @@ export function Roadmap() {
     <section id="roadmap" className="relative scroll-mt-24 py-24">
       <div className="container">
         <SectionHeading
+          tone="rose"
           eyebrow="06 · roadmap"
           title={
             <>
               Where this is
-              <span className="text-gradient"> heading next.</span>
+              <span className="text-gradient-rose"> heading next.</span>
             </>
           }
           description="The core is done. These are the batteries that keep getting added — scroll the shelf."

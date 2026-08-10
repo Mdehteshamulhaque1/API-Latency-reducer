@@ -713,14 +713,16 @@ export function DashboardPreview({
   title = (
     <>
       Everything you need,
-      <span className="text-gradient"> one panel away.</span>
+      <span className="text-gradient-sky"> one panel away.</span>
     </>
   ),
   description = "Auth, monitoring, and cache rules ship with a working management UI — no external admin tool required.",
+  tone = "sky",
 }: {
   eyebrow?: string
   title?: React.ReactNode
   description?: string
+  tone?: "indigo" | "violet" | "cyan" | "sky" | "emerald" | "rose"
 }) {
   const [active, setActive] = useState<(typeof TABS)[number]["value"]>("dashboard")
   const [loading, setLoading] = useState(true)
@@ -740,6 +742,7 @@ export function DashboardPreview({
     <section id="dashboard" className="relative scroll-mt-24 py-24">
       <div className="container">
         <SectionHeading
+          tone={tone}
           eyebrow={eyebrow}
           title={title}
           description={description}
