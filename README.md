@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="./assets/logo.svg" alt="API Optimizer logo" width="120" height="120" />
-
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0F172A,50:1E293B,100:0EA5E9&height=180&section=header&text=API%20Optimizer&fontSize=52&fontColor=E2E8F0&fontAlignY=38&desc=High-performance%20API%20optimization%20platform&descSize=18&descAlignY=58&animation=fadeIn" width="100%"/>
 
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=20&duration=2800&pause=900&color=38BDF8&center=true&vCenter=true&width=650&lines=Redis+response+caching+for+sub-10ms+reads;Token-bucket+rate+limiting+per+user%2C+IP+%26+key;JWT+auth+with+strict+access%2Frefresh+validation;Real-time+p50%2Fp95%2Fp99+request+analytics" alt="Typing SVG" />
