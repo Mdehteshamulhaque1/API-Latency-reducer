@@ -26,13 +26,14 @@ class CacheRuleCreate(CacheRuleBase):
 
 class CacheRuleUpdate(BaseModel):
     """Schema for updating cache rule."""
-    ttl: Optional[int] = None
+    endpoint_pattern: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    ttl: Optional[int] = Field(default=None, ge=0)
     enabled: Optional[bool] = None
     cache_by_user: Optional[bool] = None
     cache_by_query_params: Optional[bool] = None
     cache_by_headers: Optional[bool] = None
-    max_cache_size: Optional[int] = None
-    priority: Optional[int] = None
+    max_cache_size: Optional[int] = Field(default=None, ge=100)
+    priority: Optional[int] = Field(default=None, ge=0)
     description: Optional[str] = None
 
 

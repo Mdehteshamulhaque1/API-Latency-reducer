@@ -1,7 +1,16 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../lib/apiClient'
 
 const AuthContext = createContext(null)
+
+function decodeRole(accessToken) {
+  try {
+    const payload = JSON.parse(atob(accessToken.split('.')[1]))
+    return payload?.role || 'viewer'
+  } catch {
+    return 'viewer'
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -24,11 +33,11 @@ export function AuthProvider({ children }) {
     localStorage.setItem('api_demo', '0')
     localStorage.setItem(
       'api_user',
-      JSON.stringify({ username, role: 'user', demo: false })
+      JSON.stringify({ username, role: decodeRole(accessToken), demo: false })
     )
     setToken(accessToken)
     setDemoMode(false)
-    setUser({ username, role: 'user', demo: false })
+    setUser({ username, role: decodeRole(accessToken), demo: false })
     return { token: accessToken, user: { username } }
   }, [])
 
@@ -48,6 +57,17 @@ export function AuthProvider({ children }) {
     setDemoMode(false)
     setUser(null)
   }, [])
+
+  // Respond to forced logouts triggered by the axios 401 interceptor when a
+  // session can no longer be refreshed.
+  useEffect(() => {
+    const onAuthExpired = () => {
+      logout()
+      window.location.replace('/login')
+    }
+    window.addEventListener('api:auth-expired', onAuthExpired)
+    return () => window.removeEventListener('api:auth-expired', onAuthExpired)
+  }, [logout])
 
   const value = useMemo(
     () => ({ user, token, demoMode, isAuthenticated: Boolean(token) || demoMode, login, enterDemo, logout }),

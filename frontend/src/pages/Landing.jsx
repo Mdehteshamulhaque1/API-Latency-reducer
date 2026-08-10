@@ -12,7 +12,6 @@ import {
   Database,
   Globe,
   CheckCircle2,
-  Quote,
   Activity,
   Timer,
   PieChart,
@@ -286,32 +285,29 @@ function HowItWorks() {
       <Blob className="-top-24 right-1/4" color="cyan" size={420} />
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid items-center gap-14 lg:grid-cols-2">
-          <div>
-            <SectionHeading
-              light
-              tone="cyan"
-              align="left"
-              eyebrow="How it works"
-              title={
-                <>
-                  Watch a request fly through the{' '}
-                  <span className="shimmer-text">pipeline in 3D</span>
-                </>
-              }
-              description="Move your cursor over the scene to tilt it. Every request is authenticated, throttled, then cache-checked — hits return instantly, misses pay one database round-trip."
-            />
-            <div className="mt-8 flex flex-wrap gap-2">
-              {['Auth', 'Rate limit', 'Cache', 'Redis', 'MySQL'].map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full border border-cyan-400/20 bg-cyan-400/5 px-3.5 py-1.5 text-xs font-medium text-cyan-200/80"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
+        <SectionHeading
+          light
+          tone="cyan"
+          eyebrow="How it works"
+          title={
+            <>
+              Watch a request fly through the{' '}
+              <span className="shimmer-text">pipeline in 3D</span>
+            </>
+          }
+          description="Move your cursor over the scene to tilt it. Every request is authenticated, throttled, then cache-checked — hits return instantly, misses pay one database round-trip."
+        />
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
+          {['Auth', 'Rate limit', 'Cache', 'Redis', 'MySQL'].map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-cyan-400/20 bg-cyan-400/5 px-3.5 py-1.5 text-xs font-medium text-cyan-200/80"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <div className="mx-auto mt-12 w-full max-w-2xl">
           <Pipeline3D />
         </div>
       </div>
@@ -510,84 +506,6 @@ function Metrics() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Testimonials                                                       */
-/* ------------------------------------------------------------------ */
-
-const testimonials = [
-  {
-    quote:
-      'We cut p95 latency by 43% in a single sprint. The cache-rule UI makes optimization feel like configuration, not surgery.',
-    name: 'Aarav Mehta',
-    role: 'Staff Engineer, Nimbus',
-    initials: 'AM',
-    gradient: 'from-brand-500 to-violet-500',
-  },
-  {
-    quote:
-      'The analytics are the first thing our team checks every morning. Slow-endpoint ranking told us exactly where to focus.',
-    name: 'Sofia Reyes',
-    role: 'Platform Lead, Orbital',
-    initials: 'SR',
-    gradient: 'from-accent-500 to-emerald-500',
-  },
-  {
-    quote:
-      'Rate limiting with a real token bucket and zero false 429s. Our abuse traffic vanished without touching app code.',
-    name: 'Daniel Kim',
-    role: 'CTO, Quantica',
-    initials: 'DK',
-    gradient: 'from-rose-500 to-orange-500',
-  },
-]
-
-function Testimonials() {
-  return (
-    <section id="testimonials" className="bg-rose-50/50 py-24 sm:py-32">
-      <div className="h-px bg-gradient-to-r from-transparent via-rose-400/40 to-transparent" aria-hidden />
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <SectionHeading
-          tone="rose"
-          eyebrow="Testimonials"
-          title={
-            <>
-              Loved by teams that{' '}
-              <span className="text-gradient-rose">ship APIs</span>
-            </>
-          }
-          description="Engineers, platform leads, and CTOs use API Optimizer to keep their backends fast under real traffic."
-        />
-        <div className="mt-16 grid gap-6 md:grid-cols-3">
-          {testimonials.map((t, i) => (
-            <Reveal key={t.name} delay={i * 0.12}>
-              <motion.figure
-                whileHover={{ y: -8 }}
-                className="card card-hover relative flex h-full flex-col p-7"
-              >
-                <Quote size={30} className="text-rose-200" fill="currentColor" />
-                <blockquote className="mt-4 flex-1 text-sm leading-relaxed text-slate-600">
-                  “{t.quote}”
-                </blockquote>
-                <figcaption className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
-                  <span
-                    className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${t.gradient} text-sm font-bold text-white shadow-md`}
-                  >
-                    {t.initials}
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{t.name}</p>
-                    <p className="text-xs text-slate-400">{t.role}</p>
-                  </div>
-                </figcaption>
-              </motion.figure>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ------------------------------------------------------------------ */
 /*  CTA                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -653,7 +571,6 @@ export default function Landing() {
       <HowItWorks />
       <Architecture />
       <Metrics />
-      <Testimonials />
       <CTA />
       <Footer />
     </div>

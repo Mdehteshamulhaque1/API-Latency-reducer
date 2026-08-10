@@ -75,7 +75,9 @@ class CacheService:
     ) -> bool:
         """Store value in cache."""
         try:
-            ttl = ttl or CACHE_TTL_DEFAULT
+            # Redis rejects non-positive TTLs; clamp them to the default rather
+            # than letting a misconfigured rule break caching.
+            ttl = ttl if ttl is not None and ttl > 0 else CACHE_TTL_DEFAULT
             await self.redis.set(key, value, ttl=ttl)
             logger.debug("Cached value for key: %s with TTL: %ss", key, ttl)
             return True
@@ -121,14 +123,14 @@ class CacheService:
             return False
 
     async def invalidate_pattern(self, pattern: str) -> int:
-        """Invalidate all cache keys matching a pattern."""
-        try:
-            keys = await self.redis.keys(pattern)
-            if not keys:
-                return 0
+        """Invalidate all cache keys matching a pattern.
 
+        Uses SCAN instead of KEYS so invalidation never blocks Redis on large
+        key sets.
+        """
+        try:
             deleted_count = 0
-            for key in keys:
+            async for key in self.redis.scan_iter(pattern, count=200):
                 if await self.redis.delete(key):
                     deleted_count += 1
 

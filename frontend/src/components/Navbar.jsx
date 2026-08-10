@@ -11,7 +11,6 @@ const links = [
   { label: 'How it works', href: '#how-it-works' },
   { label: 'Architecture', href: '#architecture' },
   { label: 'Metrics', href: '#metrics' },
-  { label: 'Testimonials', href: '#testimonials' },
 ]
 
 export default function Navbar() {

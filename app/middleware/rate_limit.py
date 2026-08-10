@@ -9,6 +9,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from app.config import settings
 from app.services.rate_limit import RateLimitService
 from app.utils.redis_client import redis_client
 
@@ -65,9 +66,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if hasattr(request.state, "user_id") and request.state.user_id:
             return f"user:{request.state.user_id}"
 
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_host = forwarded_for.split(",")[0].strip()
-        else:
-            client_host = request.client.host if request.client else "unknown"
+        client_host = request.client.host if request.client else "unknown"
+
+        # Only trust X-Forwarded-For when the request arrives directly from a
+        # configured reverse proxy; otherwise a client could spoof the header
+        # and evade rate limiting.
+        if request.client and request.client.host in settings.trusted_proxies:
+            forwarded_for = request.headers.get("X-Forwarded-For")
+            if forwarded_for:
+                client_host = forwarded_for.split(",")[0].strip()
+
         return f"ip:{client_host}"

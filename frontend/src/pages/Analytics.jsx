@@ -11,7 +11,6 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts'
-import { useDashboardData } from '../context/DashboardDataContext'
 import { useDashboardQuery } from '../hooks/useDashboardQuery'
 import { apiClient } from '../lib/apiClient'
 import { Card, PageHeader, Badge, LoadingBlock } from '../components/dashboard/ui'
@@ -25,15 +24,15 @@ const periods = [
 ]
 
 export default function Analytics() {
-  const { summary } = useDashboardData()
   const [hours, setHours] = useState(24)
 
+  const periodSummary = useDashboardQuery(() => apiClient.summary(hours), [hours])
   const slow = useDashboardQuery(() => apiClient.slowEndpoints(hours, 10), [hours])
   const benchmark = useDashboardQuery(() => apiClient.benchmark(hours), [hours])
   const suggestions = useDashboardQuery(() => apiClient.suggestions(hours), [hours])
 
   const distribution =
-    summary?.latency_distribution?.map((p) => ({
+    periodSummary.data?.latency_distribution?.map((p) => ({
       ...p,
       label: formatTimestamp(p.timestamp, { month: 'short', day: 'numeric', hour: '2-digit' }),
     })) || []
@@ -78,6 +77,9 @@ export default function Analytics() {
             </Badge>
           </div>
           <div className="mt-5 h-80">
+            {periodSummary.loading && !distribution.length ? (
+              <LoadingBlock label="Loading latency data…" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={distribution} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
@@ -94,6 +96,7 @@ export default function Analytics() {
                 <Line type="monotone" dataKey="p99_response_time_ms" name="P99" stroke="#f43f5e" strokeWidth={2.2} dot={false} strokeDasharray="5 4" />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </div>
         </Card>
       </motion.div>

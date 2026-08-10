@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from fastapi import Request
-from starlette.background import BackgroundTask
+from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.database.db import async_session_maker
@@ -66,9 +66,21 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # Persist request analytics without blocking response delivery: the
         # insert runs as a background task after the response is sent, so
         # database write time never adds to the latency the client observes.
-        response.background = BackgroundTask(
-            self._persist_request_metrics, request, response, response_time
-        )
+        # Preserve any existing background task (e.g. FastAPI BackgroundTasks
+        # scheduled by the route handler) instead of overwriting it.
+        existing = response.background
+        if existing is None:
+            response.background = BackgroundTask(
+                self._persist_request_metrics, request, response, response_time
+            )
+        elif isinstance(existing, BackgroundTasks):
+            existing.add_task(self._persist_request_metrics, request, response, response_time)
+        else:
+            async def _combined():
+                await existing()
+                await self._persist_request_metrics(request, response, response_time)
+
+            response.background = BackgroundTask(_combined)
 
         return response
 
