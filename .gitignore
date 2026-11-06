@@ -1,0 +1,36 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Databases / runtime artifacts
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# Node
+node_modules/
+
+# Build output
+dist/
+.next/
+build/
+
+# Logs
+*.log
+vite.log
+npm-debug.log*
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
