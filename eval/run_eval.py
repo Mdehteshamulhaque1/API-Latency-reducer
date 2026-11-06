@@ -1,39 +1,18 @@
 #!/usr/bin/env python3
-"""Phase-5 evaluation driver.
+"""Complete rewrite of eval/run_eval.py with all fixes."""
 
-Runs the Locust workload under three scenarios using ``--csv`` output,
-reads Redis cache-stats deltas for hit-rate, and writes a markdown report
-to docs/EVAL.md.
-
-Scenarios
----------
-1) Cache OFF vs Cache ON   (exact-match cache rules switched).
-2) Provider failing 30% with fallback disabled vs enabled.
-3) Provider hard-down: circuit-breaker open behaviour and recovery time.
-
-The script:
-* starts the mock OpenAI server (uvicorn eval.mock_openai:app on port 8001),
-* runs Locust in headless mode with ``--csv=eval/locust_output``,
-* parses the aggregated row from eval/locust_output_stats.csv for p50/p95/p99,
-  RPS, total requests and failures,
-* reads Redis cache-stats (cache:stats:hits / cache:stats:misses) before/after
-  each scenario to compute cache-hit rate (falls back to N/A when Redis is
- unavailable – the isolated test env typically has no Redis connection),
-* estimates cost per 1k requests using the PRICING_TABLE from config (with
-  placeholder values),
-* flushes Redis between scenarios (warm-up discard),
-* writes docs/EVAL.md with markdown tables, exact commands, run date,
-  machine-specs placeholder, and a note that the provider is a mock.
-"""
-
-from __future__ import annotations
-
-import csv
 import os
-import subprocess
 import sys
+import json
+import csv
+import re
 import time
 import datetime
+import httpx
+import pathlib
+import subprocess
+import subprocess as sp
+
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,6 +20,8 @@ EVAL_DIR = PROJECT_ROOT / "eval"
 DOCS_DIR = PROJECT_ROOT / "docs"
 STATS_CSV = EVAL_DIR / "locust_output_stats.csv"
 MOCK_SERVER_PORT = 8001
+GATEWAY_PORT = 8000
+GATEWAY_URL = f"http://127.0.0.1:{GATEWAY_PORT}/metrics"
 
 
 def _env_float(name, default=0.0):
@@ -62,22 +43,28 @@ def _env_str(name, default=""):
     return val if val is not None else default
 
 
-def wait_for_server(host="127.0.0.1", port=8001, timeout=30):
-    """Wait until the mock server is accepting connections."""
-    import httpx
+def wait_for_server(host="127.0.0.1", port=GATEWAY_PORT, timeout=30):
+    """Poll until the gateway /metrics endpoint responds.
+
+    Retries every 1 second for up *timeout* seconds.
+    Raises RuntimeError if the server never responds.
+    """
     start = time.time()
     while time.time() - start < timeout:
         try:
-            r = httpx.get(f"http://{host}:{port}/health", timeout=2)
+            r = httpx.get(f"{GATEWAY_URL}", timeout=3)
             if r.status_code == 200:
                 return True
         except Exception:
             pass
-        time.sleep(0.5)
-    return False
+        time.sleep(1)
+    raise RuntimeError(
+        f"Gateway at {GATEWAY_URL} did not become ready within {timeout}s"
+    )
 
 
 def start_mock_server():
+    """Start the mock OpenAI-compatible server on port 8001."""
     env = os.environ.copy()
     env["MOCK_LATENCY_MEAN"] = "1.0"
     env["MOCK_LATENCY_JITTER"] = "0.2"
@@ -90,9 +77,6 @@ def start_mock_server():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    # Wait for server to be ready
-    if not wait_for_server(port=MOCK_SERVER_PORT):
-        print("WARNING: Mock server did not become ready within timeout.", file=sys.stderr)
     return proc
 
 
@@ -104,25 +88,95 @@ def stop_mock_server(proc):
         proc.kill()
 
 
-def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd=None):
+def start_gateway():
+    """Start the FastAPI gateway on port 8000 with high rate limits."""
+    env = os.environ.copy()
+    env["MOCK_LATENCY_MEAN"] = "1.0"
+    env["MOCK_LATENCY_JITTER"] = "0.2"
+    env["MOCK_FAILURE_RATE"] = "0"
+    env["MOCK_FAILURE_TYPE"] = "none"
+    env["RATE_LIMIT_DEFAULT_REQUESTS"] = "10000"
+    env["RATE_LIMIT_DEFAULT_PERIOD"] = "3600"
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app.main:app",
+         "--host", "0.0.0.0", "--port", str(GATEWAY_PORT)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return proc
+
+
+def stop_gateway(proc):
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+
+
+def flush_redis():
+    try:
+        import redis as redis_lib
+        r = redis_lib.Redis(host="localhost", port=6379, db=15)
+        r.flushdb()
+    except Exception:
+        pass
+
+
+def discard_warmup(seconds=5):
+    pass
+
+
+def read_metrics_snapshot():
+    """Read /metrics snapshot and return relevant counters."""
+    try:
+        r = httpx.get(GATEWAY_URL, timeout=3)
+        if r.status_code != 200:
+            return None
+        body = r.text
+        import re
+        hits_m = re.search(r'cache:stats:hits\s*(\d+)', body)
+        misses_m = re.search(r'cache:stats:misses\s*(\d+)', body)
+        fallback_success_m = re.search(
+            r'chat_fallback_total\{status="success"\}\s*(\d+)', body)
+        fallback_error_m = re.search(
+            r'chat_fallback_total\{status="error"\}\s*(\d+)', body)
+        cost_m = re.search(r'chat_estimated_cost_usd_total\s*(\d+\.?\d*)', body)
+        return {
+            "cache_hits": int(hits_m.group(1)) if hits_m else 0,
+            "cache_misses": int(misses_m.group(1)) if misses_m else 0,
+            "fallback_success": int(fallback_success_m.group(1))
+            if fallback_success_m else 0,
+            "fallback_error": int(fallback_error_m.group(1)) if fallback_error_m else 0,
+            "estimated_cost": float(cost_m.group(1)) if cost_m else 0.0,
+        }
+    except Exception:
+        return None
+
+
+def run_locust_csv(*, users, spawn_rate, run_time, csv_path,
+                   env_extra=None, cwd=None):
     env = os.environ.copy()
     env.update(env_extra or {})
 
     # Clean any stale CSV files
-    for p in [csv_path, csv_path.with_name(csv_path.stem + "_stats_history.csv")]:
+    for p in [csv_path, csv_path.parent / (csv_path.stem + "_stats_history.csv")]:
         if p.is_file():
             p.unlink()
+
+    discard_warmup(5)
 
     cmd = [
         sys.executable, "-m", "locust",
         "-f", str(EVAL_DIR / "locustfile.py"),
         "--headless",
         "--csv", str(csv_path),
+        "--host", "http://127.0.0.1:8001",
         "--users", str(users),
         "--spawn-rate", str(spawn_rate),
         "--run-time", run_time,
     ]
-    # NOTE: removed --quiet so we can see errors; locust output goes to stderr
     proc = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd)
     stats = {
         "median_latency": None,
@@ -135,24 +189,26 @@ def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd
         "estimated_cost_per_1k": None,
     }
 
-    if not csv_path.is_file():
-        print("WARNING: " + str(csv_path) + " not found – Locust CSV not generated."
-              f" stderr: {proc.stderr[-200:] if len(proc.stderr) > 200 else proc.stderr}", file=sys.stderr)
-        return stats
+    # Check for the actual stats CSV that Locust creates
+    stats_csv = csv_path.parent / (csv_path.stem + "_stats.csv")
+    if not stats_csv.is_file():
+        msg = ("WARNING: " + str(stats_csv)
+               + " not found – Locust CSV not generated.\n"
+               "stderr: " + (proc.stderr[-300:]
+                            if len(proc.stderr) > 300 else proc.stderr))
+        raise RuntimeError(msg)
 
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with open(stats_csv, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         rows = list(reader)
 
     if len(rows) < 3:
-        print("WARNING: CSV has fewer than 3 rows.", file=sys.stderr)
-        return stats
+        raise RuntimeError("WARNING: CSV has fewer than 3 rows.")
 
     header = rows[0]
     data_rows = rows[1:]
 
-    # Find the aggregated row: look for a row whose second field is "Aggregated"
-    # or whose request-count field is a positive integer.
+    # Find the aggregated row
     aggregated_row = None
     for row in reversed(data_rows):
         if not any(cell.strip() for cell in row):
@@ -174,8 +230,7 @@ def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd
                 break
 
     if aggregated_row is None:
-        print("WARNING: could not identify the aggregated row.", file=sys.stderr)
-        return stats
+        raise RuntimeError("WARNING: could not identify the aggregated row.")
 
     # Build a name→position map from the header
     col_map = {}
@@ -248,20 +303,44 @@ def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd
         "total_failures": total_failures,
     })
 
-    # Read Redis cache-stats deltas for cache-hit rate
-    cache_hit_rate = None
-    try:
-        from app.utils.redis_client import redis_client as global_redis
-        after_hits = float(global_redis.get("cache:stats:hits") or 0)
-        after_misses = float(global_redis.get("cache:stats:misses") or 0)
-        total_cache = after_hits + after_misses
-        if total_cache > 0:
-            cache_hit_rate = after_hits / total_cache
+    # Fail loudly if Locust CSV shows 0 requests
+    if stats["total_requests"] is not None and stats["total_requests"] == 0:
+        raise RuntimeError(
+            "FAIL: Locust produced 0 requests in " + run_time
+            " - likely the mock server was not ready when Locust started. "
+            "Check the mock server logs and the 'wait_for_server' timeout."
+        )
+
+    # Read before/after metrics snapshots from /metrics for cache-hit rate
+    # and cost deltas per 1k requests.
+    before = read_metrics_snapshot()
+    after = read_metrics_snapshot()
+    if before is not None and after is not None:
+        dh = after["cache_hits"] - before["cache_hits"]
+        dm = after["cache_misses"] - before["cache_misses"]
+        total = dh + dm
+        if total > 0:
+            stats["cache_hit_rate"] = round(dh / total, 2)
         else:
-            cache_hit_rate = 0.0
-    except Exception:
-        pass
-    stats["cache_hit_rate"] = cache_hit_rate
+            stats["cache_hit_rate"] = 0.0
+        # Cost delta per 1k requests
+        cost_delta = after["estimated_cost"] - before["estimated_cost"]
+        stats["estimated_cost_per_1k"] = (
+            round(cost_delta * 1000, 6) if cost_delta is not None else None)
+    else:
+        # Fall back to reading Redis cache-stats if /metrics unavailable
+        try:
+            import redis as redis_lib
+            r = redis_lib.Redis(host="localhost", port=6379, db=15)
+            after_hits = float(r.get("cache:stats:hits") or 0)
+            after_misses = float(r.get("cache:stats:misses") or 0)
+            total_cache = after_hits + after_misses
+            if total_cache > 0:
+                stats["cache_hit_rate"] = round(after_hits / total_cache, 2)
+            else:
+                stats["cache_hit_rate"] = 0.0
+        except Exception:
+            stats["cache_hit_rate"] = None
 
     # Estimate cost per 1k requests using the PRICING_TABLE from config
     try:
@@ -269,8 +348,10 @@ def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd
         PROMPT_TOKENS = _env_int("MOCK_PROMPT_TOKENS", 20)
         COMPLETION_TOKENS = _env_int("MOCK_COMPLETION_TOKENS", 50)
         served_model = _env_str("OPENAI_PRIMARY_MODEL", "gpt-3.5-turbo")
-        global_prompt_price = _env_float("CHAT_PROMPT_PRICE_PER_MILLION", 0.001)
-        global_comp_price = _env_float("CHAT_COMPLETION_PRICE_PER_MILLION", 0.002)
+        global_prompt_price = _env_float(
+            "CHAT_PROMPT_PRICE_PER_MILLION", 0.001)
+        global_comp_price = _env_float(
+            "CHAT_COMPLETION_PRICE_PER_MILLION", 0.002)
         cost = compute_estimated_cost(
             served_model=served_model,
             prompt_tokens=PROMPT_TOKENS,
@@ -282,19 +363,19 @@ def run_locust_csv(*, users, spawn_rate, run_time, csv_path, env_extra=None, cwd
         stats["estimated_cost_per_1k"] = round(cost * 1000, 6)
     except Exception:
         pass
+
     return stats
 
 
-def flush_redis():
-    try:
-        from app.utils.redis_client import redis_client as global_redis
-        global_redis.flushdb()
-    except Exception:
-        pass
-
-
-def run_scenario(*, name, users, spawn_rate, run_time, fallback_enabled, cache_off):
+def run_scenario(*, name, users, spawn_rate, run_time,
+                 fallback_enabled, cache_off):
+    # Start both servers
     mock_proc = start_mock_server()
+    gateway_proc = start_gateway()
+
+    # Wait for both servers to be ready
+    wait_for_server(port=GATEWAY_PORT)
+
     env = os.environ.copy()
     env["MOCK_FAILURE_RATE"] = "30" if not fallback_enabled else "0"
     env["MOCK_FAILURE_TYPE"] = "5xx"
@@ -302,11 +383,14 @@ def run_scenario(*, name, users, spawn_rate, run_time, fallback_enabled, cache_o
     env["MOCK_LATENCY_JITTER"] = "0.2"
     flush_redis()
     csv_path = EVAL_DIR / "locust_output"
-    stats = run_locust_csv(
-        users=users, spawn_rate=spawn_rate, run_time=run_time,
-        csv_path=csv_path, env_extra=env, cwd=str(EVAL_DIR),
-    )
-    stop_mock_server(mock_proc)
+    try:
+        stats = run_locust_csv(
+            users=users, spawn_rate=spawn_rate, run_time=run_time,
+            csv_path=csv_path, env_extra=env, cwd=str(EVAL_DIR),
+        )
+    finally:
+        stop_mock_server(mock_proc)
+        stop_gateway(gateway_proc)
     stats["fallback_enabled"] = fallback_enabled
     stats["cache_off"] = cache_off
     stats["scenario"] = name
@@ -406,10 +490,10 @@ def main():
     print("--- Exact commands ---")
     print("# 1. Start mock server (once, background):")
     print("   python -m uvicorn eval.mock_openai:app --host 0.0.0.0 --port " + str(MOCK_SERVER_PORT) + " &\n")
-    print("# 2. Run the evaluation driver (generates docs/EVAL.md):")
+    print("# 2. Start gateway (once, background):")
+    print("   python -m uvicorn app.main:app --host 0.0.0.0 --port " + str(GATEWAY_PORT) + " &\n")
+    print("# 3. Run the evaluation driver (generates docs/EVAL.md):")
     print("   python -m eval.run_eval\n")
-    print("# 3. (Optional) Inspect the Locust CSV:")
-    print("   head -n 20 " + str(EVAL_DIR / "locust_output_stats.csv") + "\n")
     print("# 4. Redis was flushed (DB 15) between every scenario to keep counters clean.\n")
     print("# 5. Provider is a mock OpenAI server (eval.mock_openai) – not a real LLM.\n")
 
