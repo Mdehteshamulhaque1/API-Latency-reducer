@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from app.config import settings
+from app.config import settings, compute_estimated_cost
 from app.core.constants import CACHE_KEY_CHAT_PREFIX
 from app.core.exceptions import ExternalServiceError
 from app.schemas.chat import ChatRequest, ChatResponse, ChatUsage
@@ -143,6 +143,8 @@ class ChatService:
                     correlation_id,
                     fallback_used=False,
                     circuit_state=breaker.state.value,
+                    cache_type="exact",
+                    estimated_cost_usd=0.0,
                 )
 
         allowed = breaker.allow_request()
@@ -290,6 +292,19 @@ class ChatService:
                 correlation_id,
             )
 
+        # --- cost estimation ---
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
+        estimated_cost_usd = compute_estimated_cost(
+            served_model=response.served_model or primary_model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            pricing_table=settings.PRICING_TABLE,
+            global_prompt_price=getattr(settings, "chat_prompt_price_per_million", 0.0),
+            global_completion_price=getattr(settings, "chat_completion_price_per_million", 0.0),
+        )
+        cache_type = "miss"
+
         self._log_success(
             response,
             requested_model,
@@ -301,6 +316,8 @@ class ChatService:
             correlation_id,
             fallback_used=False,
             circuit_state=breaker.state.value,
+            estimated_cost_usd=estimated_cost_usd,
+            cache_type=cache_type,
         )
         return response
 
@@ -517,6 +534,8 @@ class ChatService:
         *,
         fallback_used: bool,
         circuit_state: str,
+        cache_type: str = "miss",
+        estimated_cost_usd: float = 0.0,
     ) -> ChatResponse:
         """Return a cache hit with fresh latency and served-model metadata."""
         latency_ms = (time.perf_counter() - started_at) * 1000
@@ -538,6 +557,8 @@ class ChatService:
                 "model": response.model,
                 "served_model": response.served_model,
                 "fallback_used": fallback_used,
+                "cache_type": cache_type,
+                "estimated_cost_usd": estimated_cost_usd,
                 "cache_key": cache_key,
                 "latency_ms": round(response.latency_ms, 2),
                 "user_id": user_id,
@@ -560,6 +581,8 @@ class ChatService:
         *,
         fallback_used: bool,
         circuit_state: str,
+        estimated_cost_usd: float = 0.0,
+        cache_type: str = "miss",
     ) -> None:
         """Log one successful provider call with model attribution."""
         logger.info(
@@ -582,6 +605,8 @@ class ChatService:
                 "user_id": user_id,
                 "correlation_id": correlation_id,
                 "circuit_state": circuit_state,
+                "estimated_cost_usd": estimated_cost_usd,
+                "cache_type": cache_type,
             },
         )
 

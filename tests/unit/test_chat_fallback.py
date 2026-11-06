@@ -126,8 +126,6 @@ async def test_primary_timeout_fallback(monkeypatch):
     monkeypatch.setattr(settings, "openai_max_retries", 0)
 
     # Primary request times out, fallback succeeds
-    mock_timeout = Mock()
-    mock_timeout.status_code = 0  # not used; exception raised via side_effect
     mock_success = Mock()
     mock_success.status_code = 200
     mock_success.json = Mock(
@@ -147,14 +145,14 @@ async def test_primary_timeout_fallback(monkeypatch):
         }
     )
     mock_post = AsyncMock()
-    mock_post.side_effect = [mock_timeout, mock_success]  # first call triggers timeout, second is fallback
+    mock_post.side_effect = [httpx.TimeoutException("timeout"), mock_success]  # first call triggers timeout, second is fallback
     with patch.object(svc._client, "post", mock_post):
         req = _req(model="gpt-3.5-turbo")
         resp = await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
 
     # Should have attempted primary once (timeout), then fallback once
-    assert svc._client.post.call_count == 2, (
-        f"Expected 2 calls (primary + fallback), got {svc._client.post.call_count}"
+    assert mock_post.call_count == 2, (
+        f"Expected 2 calls (primary + fallback), got {mock_post.call_count}"
     )
     assert resp.fallback_used is True
     assert resp.model == "gpt-4o"
@@ -162,7 +160,7 @@ async def test_primary_timeout_fallback(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 3️⃣ Primary 5xx → fallback called
+# 3️⃣ Primary 5xx → fallback called, fallback_used=True
 # ---------------------------------------------------------------------------
 async def test_primary_5xx_fallback(monkeypatch):
     """Primary model returns 5xx → fallback is used, fallback_used=True."""
@@ -201,18 +199,15 @@ async def test_primary_5xx_fallback(monkeypatch):
     mock_post.side_effect = [mock_5xx, mock_success]  # primary 5xx, then fallback 200
     with patch.object(svc._client, "post", mock_post):
         req = _req(model="gpt-3.5-turbo")
-        with pytest.raises(_ProviderFailure):
-            await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
-    # The exception is raised because after fallback attempt the code checks eligibility;
-    # but we assert call count below.  For the purpose of this test we verify the fallback
-    # was attempted (call_count == 2) and the response would have fallback_used=True.
-    # Since the implementation raises _ProviderFailure after the fallback also fails
-    # (both models failed), we just check that two calls were made.
-    assert svc._client.post.call_count == 2
+        resp = await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
+
+    assert mock_post.call_count == 2
+    assert resp.fallback_used is True
+    assert resp.served_model == "gpt-4o"
 
 
 # ---------------------------------------------------------------------------
-# 4️⃣ Primary 429 → fallback called
+# 4️⃣ Primary 429 → fallback called, fallback_used=True
 # ---------------------------------------------------------------------------
 async def test_primary_429_fallback(monkeypatch):
     """Primary model returns 429 → fallback is used, fallback_used=True."""
@@ -251,9 +246,11 @@ async def test_primary_429_fallback(monkeypatch):
     mock_post.side_effect = [mock_429, mock_success]  # primary 429, then fallback 200
     with patch.object(svc._client, "post", mock_post):
         req = _req(model="gpt-3.5-turbo")
-        with pytest.raises(_ProviderFailure):
-            await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
-    assert svc._client.post.call_count == 2
+        resp = await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
+
+    assert mock_post.call_count == 2
+    assert resp.fallback_used is True
+    assert resp.served_model == "gpt-4o"
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +276,7 @@ async def test_primary_400_no_fallback(monkeypatch):
         with pytest.raises(_ProviderFailure):
             await svc.create_chat_completion(req, user_id=1, correlation_id="c1")
     # Only the primary attempt should have been made; fallback must not have been tried.
-    assert svc._client.post.call_count == 1
+    assert mock_post.call_count == 1
 
 
 # ---------------------------------------------------------------------------
