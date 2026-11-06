@@ -266,7 +266,104 @@ Env vars: `BASE_URL`, `VUS` (default 20), `DURATION` (default 30s), `SLEEP`, `AD
 
 Run with `VUS=10` (as above) for stable, spike-free numbers on SQLite; higher concurrency is bounded by the SQLite write path, not the cache. The demo endpoint is deliberately excluded from auth, rate limiting, and analytics persistence so the benchmark isolates the caching layer.
 
-## CI/CD (GitHub Actions)
+## LLM Gateway (Phase 3+4+5)
+
+### Architecture
+
+The request flow, from client to response, is:
+
+```mermaid
+flowchart TB
+    subgraph "Middleware (outermost → innermost)"
+        CORS[CORS]
+        METRICS[Metrics]
+        CORREL[Correlation-ID]
+        AUTH[Auth]
+        RATE_LIMIT[Rate-Limit]
+        CACHE[Exact-Match Cache]
+    end
+    subgraph "Business Logic"
+        DIRECT[Primary Provider]
+        BREAKER[Circuit-Breaker]
+        FALLBACK[Fallback Provider]
+    end
+    CLIENT[Client] --> CORS
+    CORS --> METRICS
+    METRICS --> CORREL
+    CORREL --> AUTH
+    AUTH --> RATE_LIMIT
+    RATE_LIMIT --> CACHE
+    CACHE --> DIRECT
+    DIRECT --> BREAKER
+    BREAKER --> FALLBACK
+    FALLBACK --> METRICS
+    METRICS --> RESP[Response]
+
+    %% Connections
+    CACHE -- HIT -->|respond from cache| RESP
+    CACHE -- MISS --> DIRECT
+    BREAKER -- CLOSED --> DIRECT
+    BREAKER -- OPEN --> FALLBACK
+    style CORS fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style METRICS fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style CORREL fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style AUTH fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style RATE_LIMIT fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style CACHE fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style DIRECT fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style BREAKER fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style FALLBACK fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style RESP fill:#e0e0e0,stroke:#333,stroke-width:2px
+```
+
+**Key points:**
+
+- **Auth** runs before the rate limiter so the limiter keys on `request.state.user_id`.
+- **Cache** is innermost – auth, rate limiting and metrics always run before a cache hit short‑circuits.
+- **Circuit‑breaker** sits between primary and fallback. When OPEN, requests bypass the primary and go straight to the fallback. When CLOSED, the primary is tried first.
+- **Metrics** logs every request and persists analytics rows; `/metrics` endpoint exposes Prometheus‑compatible counters.
+
+### Environment variables (new in Phase 3‑4)
+
+| Variable | Required? | Default | Description |
+|----------|-----------|---------|-------------|
+| `OPENAI_PRIMARY_MODEL` | yes (when DEMO_ENDPOINT_ENABLED=False) | gpt-3.5-turbo | Primary model name |
+| `OPENAI_FALLBACK_MODEL` | yes (when fallback enabled) | gpt-4o | Fallback model name |
+| `LLM_CIRCUIT_FAILURE_THRESHOLD` | no | 5 | Consecutive eligible failures before breaker opens |
+| `LLM_CIRCUIT_COOLDOWN_SECONDS` | no | 30 | Cooldown before half‑open probe |
+| `LLM_CIRCUIT_HALF_OPEN_MAX_PROBES` | no | 1 | Max probes in half‑open state |
+| `LLM_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD` | no | 1 | Successes needed to close breaker |
+| `CHAT_PROMPT_PRICE_PER_MILLION` | no | 0.001 | Prompt price / M tokens (overrides global) |
+| `CHAT_COMPLETION_PRICE_PER_MILLION` | no | 0.002 | Completion price / M tokens (overrides global) |
+| `DEMO_ENDPOINT_ENABLED` | no | False | When True, `/api/v1/demo/latency` is unprotected/unthrottled |
+| `TRUSTED_PROXIES` | no | [] | Comma‑separated or JSON array of trusted proxy IPs |
+
+### How to run the evaluation harness (Phase 5)
+
+```bash
+# 1️⃣  Start the mock OpenAI server (in eval/ directory)
+python -m uvicorn eval.mock_openai:app --host 0.0.0.0 --port 8001
+
+# 2️⃣  Run Locust workload
+locust -f eval/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 30s
+
+# 3️⃣  Generate the markdown report
+python -m eval.run_eval          # writes docs/EVAL.md
+```
+
+The generated `docs/EVAL.md` contains a table of latency, RPS, error rate, fallback rate and cost‑per‑1k‑requests for the three scenarios (Cache OFF/ON, Fallback OFF/ON, Hard‑down).
+
+### Limitations (honest, up‑front)
+
+- **Circuit breaker is process‑local.** In a multi‑worker deployment each worker has its own breaker state; state is **not** shared across workers. Use a distributed lock or a centralized store (e.g., Redis) if cross‑worker coordination is needed.
+- **Exact‑match cache only.** Cache keys are pattern‑based hash look‑ups; there is no fuzzy matching, prefix caching, or tiered cache (e.g., local‑memory + Redis).
+- **Mock‑provider eval vs real provider.** The evaluation harness uses a local mock server with injected latency/failure rates. Real‑world provider SLAs, token pricing, and latency distributions will differ.
+- **In‑memory state per worker.** Cache rules loaded from the DB are cached in Redis with a 10‑second TTL; rule writes invalidate the key eagerly, but any in‑process counters (e.g., request totals) reset on process restart.
+- **Redis fail‑open is intentional.** If Redis is unavailable, rate limiting allows requests through and cache lookups become misses – the system never blocks traffic.
+
+### Link to evaluation report
+
+- `docs/EVAL.md` – generated markdown with tables and per‑scenario numbers.
 
 `.github/workflows/ci.yml` runs on every push/PR:
 

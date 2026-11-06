@@ -3,6 +3,7 @@ Application configuration management.
 Supports environment-based configuration with validation.
 """
 import json
+import logging
 from functools import lru_cache
 from typing import Annotated, List, Optional
 
@@ -160,6 +161,26 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return v
 
+    # Pricing (per 1M tokens, overridable via env)
+    chat_prompt_price_per_million: float = Field(
+        default=0.0,
+        validation_alias="CHAT_PROMPT_PRICE_PER_MILLION",
+        description="Default prompt price per million tokens; overridden per-model in PRICING_TABLE",
+    )
+    chat_completion_price_per_million: float = Field(
+        default=0.0,
+        validation_alias="CHAT_COMPLETION_PRICE_PER_MILLION",
+        description="Default completion price per million tokens; overridden per-model in PRICING_TABLE",
+    )
+
+    # Pricing table: model -> {"prompt": float, "completion": float} per 1M tokens.
+    # Values are in USD.  If a model is not listed and the global default is 0,
+    # the cost for that request is 0 and a warning is logged.
+    PRICING_TABLE: dict[str, dict[str, float]] = {
+        "gpt-3.5-turbo": {"prompt": 0.001, "completion": 0.002},
+        "gpt-4o":        {"prompt": 0.03,  "completion": 0.06},
+    }
+
     # Admin User
     admin_email: str = Field(validation_alias="ADMIN_EMAIL")
     admin_password: str = Field(validation_alias="ADMIN_PASSWORD")
@@ -189,6 +210,47 @@ class Settings(BaseSettings):
         if v != "HS256":
             raise ValueError("Only the HS256 JWT algorithm is supported")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Cost estimation helper
+# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+
+def compute_estimated_cost(
+    served_model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    pricing_table: dict,
+    global_prompt_price: float,
+    global_completion_price: float,
+) -> float:
+    """Return estimated cost in USD for a chat request.
+
+    If the model is not in *pricing_table* and *global_prompt_price*/*global_completion_price*
+    are zero, the cost is 0 and a warning is logged.
+    """
+    # Check per‑model table first
+    model_pricing = pricing_table.get(served_model)
+    if model_pricing is not None:
+        prompt_price = model_pricing.get("prompt", global_prompt_price)
+        completion_price = model_pricing.get("completion", global_completion_price)
+    else:
+        # Fall back to global defaults
+        prompt_price = global_prompt_price
+        completion_price = global_completion_price
+
+    # If both are zero, cost is zero – we still log a warning if the model was unknown.
+    if prompt_price == 0 and completion_price == 0:
+        logger.warning(
+            "No pricing information for model %s; cost will be 0", served_model,
+        )
+        return 0.0
+
+    prompt_cost = (prompt_tokens / 1_000_000) * prompt_price
+    completion_cost = (completion_tokens / 1_000_000) * completion_price
+    return prompt_cost + completion_cost
 
 
 @lru_cache()
