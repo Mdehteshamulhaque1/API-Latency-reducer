@@ -285,3 +285,7 @@ Run with `VUS=10` (as above) for stable, spike-free numbers on SQLite; higher co
 <div align="center">
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0EA5E9,100:0F172A&height=100&section=footer" width="100%"/>
 </div>
+# #   L i m i t a t i o n 
+ 
+ -   * * C i r c u i t   b r e a k e r   i s   p r o c e s s - l o c a l . * *   I n   a   m u l t i  w o r k e r   d e p l o y m e n t   e a c h   w o r k e r   h a s   i t s   o w n   b r e a k e r   s t a t e ;   s t a t e   i s   n o t   s h a r e d   a c r o s s   w o r k e r s .  
+ 
