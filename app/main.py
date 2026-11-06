@@ -17,7 +17,7 @@ from app.middleware.cache import CacheMiddleware
 from app.utils.logger import configure_logging, get_logger
 from app.utils.redis_client import redis_client
 from app.database.db import init_db, close_db
-from app.api.v1 import auth, health, analytics, rules, demo
+from app.api.v1 import auth, health, analytics, rules, demo, chat
 
 # Configure logging
 configure_logging()
@@ -128,6 +128,8 @@ app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(analytics.router, prefix=settings.api_v1_prefix)
 app.include_router(rules.router, prefix=settings.api_v1_prefix)
 app.include_router(demo.router, prefix=settings.api_v1_prefix)
+app.include_router(chat.router, prefix=settings.api_v1_prefix)
+app.include_router(chat.router, prefix="/v1", include_in_schema=False)
 
 
 # Root endpoint
