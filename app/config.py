@@ -40,6 +40,38 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = Field(validation_alias="REDIS_URL")
     redis_cache_ttl: int = Field(default=3600, validation_alias="REDIS_CACHE_TTL")
+    redis_connect_timeout: int = Field(
+        default=3,
+        ge=1,
+        le=30,
+        validation_alias="REDIS_CONNECT_TIMEOUT",
+    )
+    redis_socket_timeout: int = Field(
+        default=3,
+        ge=1,
+        le=30,
+        validation_alias="REDIS_SOCKET_TIMEOUT",
+    )
+
+    # OpenAI / LLM Gateway
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias="OPENAI_BASE_URL",
+    )
+    openai_model: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL")
+    openai_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        validation_alias="OPENAI_TIMEOUT_SECONDS",
+    )
+    openai_max_retries: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        validation_alias="OPENAI_MAX_RETRIES",
+    )
 
     # JWT
     secret_key: str = Field(validation_alias="SECRET_KEY")

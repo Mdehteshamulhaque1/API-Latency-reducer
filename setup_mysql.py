@@ -4,7 +4,6 @@ MySQL setup helper - creates database and user if needed.
 Run with: python setup_mysql.py
 """
 import subprocess
-import sys
 
 def run_command(cmd, description):
     """Run shell command and show output."""
@@ -55,7 +54,7 @@ def setup_mysql():
         with open(".env", "r") as f:
             content = f.read()
         
-        old_url = f"mysql+aiomysql://root:password@localhost:3306/api_optimizer"
+        old_url = "mysql+aiomysql://root:password@localhost:3306/api_optimizer"
         new_url = f"mysql+aiomysql://{username}:{password}@localhost:3306/api_optimizer"
         content = content.replace(old_url, new_url)
         

@@ -6,7 +6,6 @@ Run with: python test_api.py
 """
 import sys
 import asyncio
-import json
 from datetime import datetime
 
 sys.path.insert(0, '.')
@@ -114,7 +113,7 @@ async def test_endpoints():
                     print("   ✅ Cache rule creation working")
                 else:
                     print(f"   Response: {resp.json()}")
-                    print(f"   Note: May require admin role")
+                    print("   Note: May require admin role")
         else:
             print(f"   Error: {resp.json()}")
     else:
