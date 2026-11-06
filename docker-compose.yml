@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: api-optimizer-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build: .
+    container_name: api-optimizer-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # SQLite data lives on a named volume so it survives container restarts.
+      DATABASE_URL: sqlite+aiosqlite:////data/api_optimizer.db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-compose-demo-secret-key-change-me-0123456789}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-in-production}
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      LOG_LEVEL: INFO
+    volumes:
+      - api_optimizer_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: api-optimizer-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # Vite proxies /api -> backend service; see frontend/vite.config.js
+      VITE_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api_optimizer_data:
