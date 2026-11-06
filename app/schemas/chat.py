@@ -35,6 +35,8 @@ class ChatResponse(BaseModel):
 
     id: str
     model: str
+    served_model: str | None = None
+    fallback_used: bool = False
     content: str
     finish_reason: str | None = None
     usage: ChatUsage = Field(default_factory=ChatUsage)

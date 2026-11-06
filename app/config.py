@@ -60,6 +60,38 @@ class Settings(BaseSettings):
         validation_alias="OPENAI_BASE_URL",
     )
     openai_model: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL")
+    openai_primary_model: str | None = Field(
+        default=None,
+        validation_alias="OPENAI_PRIMARY_MODEL",
+    )
+    openai_fallback_model: str | None = Field(
+        default="gpt-4o",
+        validation_alias="OPENAI_FALLBACK_MODEL",
+    )
+    llm_circuit_failure_threshold: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        validation_alias="LLM_CIRCUIT_FAILURE_THRESHOLD",
+    )
+    llm_circuit_cooldown_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=3600,
+        validation_alias="LLM_CIRCUIT_COOLDOWN_SECONDS",
+    )
+    llm_circuit_half_open_max_probes: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        validation_alias="LLM_CIRCUIT_HALF_OPEN_MAX_PROBES",
+    )
+    llm_circuit_half_open_success_threshold: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        validation_alias="LLM_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD",
+    )
     openai_timeout_seconds: float = Field(
         default=10.0,
         gt=0,
