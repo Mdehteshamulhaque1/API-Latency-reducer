@@ -6,9 +6,7 @@ Run with: python migrate_db.py
 import asyncio
 import os
 import sys
-from datetime import datetime
 import bcrypt
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 # Add app to path (works on Windows and POSIX)
@@ -16,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.database.base import Base
 from app.database.db import engine, async_session_maker
-from app.models import User, CacheRule, APILog, RateLimitCounter, Analytics
+from app.models import User
 from app.core.constants import UserRole
 from app.config import settings
 

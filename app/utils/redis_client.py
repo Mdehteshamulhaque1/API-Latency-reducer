@@ -29,8 +29,8 @@ class RedisClient:
                 settings.redis_url,
                 encoding="utf8",
                 decode_responses=True,
-                socket_connect_timeout=3,
-                socket_timeout=3,
+                socket_connect_timeout=settings.redis_connect_timeout,
+                socket_timeout=settings.redis_socket_timeout,
             )
             # Test connection
             await self.client.ping()
