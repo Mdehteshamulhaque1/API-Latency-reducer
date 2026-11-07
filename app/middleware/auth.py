@@ -30,6 +30,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/health",
         "/api/v1/ping",
         "/api/v1/demo/latency",
+        "/metrics",
         "/docs",
         "/redoc",
         "/openapi.json",

@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from prometheus_client import generate_latest
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.config import settings
 from app.core.exceptions import APIException
@@ -17,7 +18,8 @@ from app.middleware.cache import CacheMiddleware
 from app.utils.logger import configure_logging, get_logger
 from app.utils.redis_client import redis_client
 from app.database.db import init_db, close_db
-from app.api.v1 import auth, health, analytics, rules, demo
+from app.api.v1 import auth, health, analytics, rules, demo, chat
+from app.metrics import _registry
 
 # Configure logging
 configure_logging()
@@ -128,6 +130,8 @@ app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(analytics.router, prefix=settings.api_v1_prefix)
 app.include_router(rules.router, prefix=settings.api_v1_prefix)
 app.include_router(demo.router, prefix=settings.api_v1_prefix)
+app.include_router(chat.router, prefix=settings.api_v1_prefix)
+app.include_router(chat.router, prefix="/v1", include_in_schema=False)
 
 
 # Root endpoint
@@ -140,6 +144,12 @@ async def root():
         "status": "running",
         "docs": "/docs",
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(_registry), media_type="text/plain")
 
 
 if __name__ == "__main__":

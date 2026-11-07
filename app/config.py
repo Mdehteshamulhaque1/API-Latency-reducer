@@ -3,6 +3,7 @@ Application configuration management.
 Supports environment-based configuration with validation.
 """
 import json
+import logging
 from functools import lru_cache
 from typing import Annotated, List, Optional
 
@@ -40,6 +41,70 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = Field(validation_alias="REDIS_URL")
     redis_cache_ttl: int = Field(default=3600, validation_alias="REDIS_CACHE_TTL")
+    redis_connect_timeout: int = Field(
+        default=3,
+        ge=1,
+        le=30,
+        validation_alias="REDIS_CONNECT_TIMEOUT",
+    )
+    redis_socket_timeout: int = Field(
+        default=3,
+        ge=1,
+        le=30,
+        validation_alias="REDIS_SOCKET_TIMEOUT",
+    )
+
+    # OpenAI / LLM Gateway
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias="OPENAI_BASE_URL",
+    )
+    openai_model: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL")
+    openai_primary_model: str | None = Field(
+        default=None,
+        validation_alias="OPENAI_PRIMARY_MODEL",
+    )
+    openai_fallback_model: str | None = Field(
+        default="gpt-4o",
+        validation_alias="OPENAI_FALLBACK_MODEL",
+    )
+    llm_circuit_failure_threshold: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        validation_alias="LLM_CIRCUIT_FAILURE_THRESHOLD",
+    )
+    llm_circuit_cooldown_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=3600,
+        validation_alias="LLM_CIRCUIT_COOLDOWN_SECONDS",
+    )
+    llm_circuit_half_open_max_probes: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        validation_alias="LLM_CIRCUIT_HALF_OPEN_MAX_PROBES",
+    )
+    llm_circuit_half_open_success_threshold: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        validation_alias="LLM_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD",
+    )
+    openai_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+        validation_alias="OPENAI_TIMEOUT_SECONDS",
+    )
+    openai_max_retries: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        validation_alias="OPENAI_MAX_RETRIES",
+    )
 
     # JWT
     secret_key: str = Field(validation_alias="SECRET_KEY")
@@ -96,6 +161,26 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return v
 
+    # Pricing (per 1M tokens, overridable via env)
+    chat_prompt_price_per_million: float = Field(
+        default=0.0,
+        validation_alias="CHAT_PROMPT_PRICE_PER_MILLION",
+        description="Default prompt price per million tokens; overridden per-model in PRICING_TABLE",
+    )
+    chat_completion_price_per_million: float = Field(
+        default=0.0,
+        validation_alias="CHAT_COMPLETION_PRICE_PER_MILLION",
+        description="Default completion price per million tokens; overridden per-model in PRICING_TABLE",
+    )
+
+    # Pricing table: model -> {"prompt": float, "completion": float} per 1M tokens.
+    # Values are in USD.  If a model is not listed and the global default is 0,
+    # the cost for that request is 0 and a warning is logged.
+    PRICING_TABLE: dict[str, dict[str, float]] = {
+        "gpt-3.5-turbo": {"prompt": 0.001, "completion": 0.002},
+        "gpt-4o":        {"prompt": 0.03,  "completion": 0.06},
+    }
+
     # Admin User
     admin_email: str = Field(validation_alias="ADMIN_EMAIL")
     admin_password: str = Field(validation_alias="ADMIN_PASSWORD")
@@ -125,6 +210,47 @@ class Settings(BaseSettings):
         if v != "HS256":
             raise ValueError("Only the HS256 JWT algorithm is supported")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Cost estimation helper
+# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+
+def compute_estimated_cost(
+    served_model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    pricing_table: dict,
+    global_prompt_price: float,
+    global_completion_price: float,
+) -> float:
+    """Return estimated cost in USD for a chat request.
+
+    If the model is not in *pricing_table* and *global_prompt_price*/*global_completion_price*
+    are zero, the cost is 0 and a warning is logged.
+    """
+    # Check per‑model table first
+    model_pricing = pricing_table.get(served_model)
+    if model_pricing is not None:
+        prompt_price = model_pricing.get("prompt", global_prompt_price)
+        completion_price = model_pricing.get("completion", global_completion_price)
+    else:
+        # Fall back to global defaults
+        prompt_price = global_prompt_price
+        completion_price = global_completion_price
+
+    # If both are zero, cost is zero – we still log a warning if the model was unknown.
+    if prompt_price == 0 and completion_price == 0:
+        logger.warning(
+            "No pricing information for model %s; cost will be 0", served_model,
+        )
+        return 0.0
+
+    prompt_cost = (prompt_tokens / 1_000_000) * prompt_price
+    completion_cost = (completion_tokens / 1_000_000) * completion_price
+    return prompt_cost + completion_cost
 
 
 @lru_cache()
