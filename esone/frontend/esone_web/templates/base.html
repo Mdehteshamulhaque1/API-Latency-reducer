@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Esone{% endblock %}</title>
+  <meta name="description" content="Esone is a JWT authentication platform: register, sign in, refresh sessions and inspect your token claims from one console.">
+  <meta name="esone-api-url" content="{{ api_url }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230E6B55'/%3E%3Ccircle cx='12' cy='9.5' r='3.5' fill='%23fff'/%3E%3Cpath d='M10.4 12.5h3.2l1.1 6.5H9.3l1.1-6.5Z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v={{ asset_version }}">
+  {% block head %}{% endblock %}
+</head>
+<body data-page="{{ page }}">
+  {% block body %}{% endblock %}
+  <script type="module" src="{{ url_for('static', path='js/site.js') }}?v={{ asset_version }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

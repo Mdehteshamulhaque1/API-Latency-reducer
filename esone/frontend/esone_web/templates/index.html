@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Esone — Authentication platform{% endblock %}
+
+{% block body %}
+{% include "_navbar.html" %}
+<main class="bg-paper">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wash" aria-hidden="true"><span class="wash-a"></span><span class="wash-b"></span></div>
+    <div class="dots" aria-hidden="true"></div>
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow fade-in" style="--delay: 0s">JWT authentication platform</span>
+        <h1 class="display hero-title fade-in" style="--delay: .08s">Sign-in that is<br><span class="display-accent">simple to trust.</span></h1>
+        <p class="hero-lead fade-in" style="--delay: .16s">Esone issues short-lived access tokens, rotates refresh tokens, tags every session with a role, and shows you exactly what your token says. Three endpoints, no surprises.</p>
+        <div class="hero-actions fade-in" style="--delay: .24s">
+          <a href="/register" class="btn btn-primary btn-lg">Create account {{ icon("arrow-right", "icon-xs icon-shift") }}</a>
+          <a href="/login" class="btn btn-outline btn-lg">Sign in</a>
+        </div>
+        <ul class="hero-checks fade-in" style="--delay: .4s">
+          <li>{{ icon("check", "icon-xs text-brand") }}HS256 signed</li>
+          <li>{{ icon("check", "icon-xs text-brand") }}Refresh rotation</li>
+          <li>{{ icon("check", "icon-xs text-brand") }}Role claims</li>
+          <li>{{ icon("check", "icon-xs text-brand") }}One retry, no loops</li>
+        </ul>
+      </div>
+
+      <!-- Static illustrative sign-in receipt. No API calls here. -->
+      <div class="receipt fade-in" style="--delay: .3s">
+        <div class="card receipt-card">
+          <div class="receipt-head">
+            <span class="text-sm text-ink-2 font-medium">Sign-in receipt</span>
+            <span class="tag"><span class="dot dot-brand dot-pulse"></span>verified</span>
+          </div>
+          <ul class="receipt-steps">
+            <li class="slide-in" style="--delay: .6s"><span class="icon-box icon-box-brand">{{ icon("key", "icon-xs") }}</span><span class="receipt-label">Credentials verified</span><span class="mono text-xs text-muted">12 ms</span><span class="check-dot pop" style="--delay: .9s">{{ icon("check", "icon-xxs") }}</span></li>
+            <li class="slide-in" style="--delay: .78s"><span class="icon-box icon-box-brand">{{ icon("shield-check", "icon-xs") }}</span><span class="receipt-label">Access token signed</span><span class="mono text-xs text-muted">HS256</span><span class="check-dot pop" style="--delay: 1.08s">{{ icon("check", "icon-xxs") }}</span></li>
+            <li class="slide-in" style="--delay: .96s"><span class="icon-box icon-box-brand">{{ icon("refresh", "icon-xs") }}</span><span class="receipt-label">Refresh token issued</span><span class="mono text-xs text-muted">7 days</span><span class="check-dot pop" style="--delay: 1.26s">{{ icon("check", "icon-xxs") }}</span></li>
+          </ul>
+          <div class="receipt-foot">
+            <p class="receipt-caption">Session</p>
+            <div class="receipt-foot-row">
+              <div><p class="display receipt-role">viewer</p><p class="text-xs text-muted mt-1">user #42</p></div>
+              <div class="text-right"><p class="mono text-sm text-ink">14:59</p><p class="text-xs text-muted mt-1">until refresh</p></div>
+            </div>
+          </div>
+        </div>
+        <span class="receipt-float receipt-float-a slide-in" style="--delay: 1.4s" aria-hidden="true">role: viewer</span>
+        <span class="receipt-float receipt-float-b slide-in float-slow" style="--delay: 1.5s" aria-hidden="true">exp in 15 min</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how" class="section">
+    <div class="container">
+      <div class="section-intro" data-reveal>
+        <span class="eyebrow">How it works</span>
+        <h2 class="display section-title">Four calls. <span class="display-accent">One lifecycle.</span></h2>
+        <p class="section-lead">This is the whole contract between the browser and the backend. Each step maps to a real route.</p>
+      </div>
+      <div class="steps">
+        <span class="steps-line" aria-hidden="true"></span>
+        {% set steps = [
+          ("user-plus", "Register", "POST /api/v1/auth/register", "Username, email and password. The server hashes the password and creates a viewer account."),
+          ("log-in", "Sign in", "POST /api/v1/auth/login", "Credentials are checked and a signed access and refresh token pair comes back."),
+          ("key", "Call the API", "Authorization: Bearer", "Protected routes verify the signature, expiry, token type and role on every request."),
+          ("refresh", "Refresh", "POST /api/v1/auth/refresh", "On a 401 the client swaps the refresh token for a new pair and retries once.")
+        ] %}
+        {% for ic, title, code, body in steps %}
+        <div class="step" data-reveal style="--delay: {{ loop.index0 * 0.09 }}s">
+          <div class="step-head">
+            <span class="step-icon">{{ icon(ic, "icon-md") }}</span>
+            <span class="step-number display">0{{ loop.index }}</span>
+          </div>
+          <h3 class="step-title">{{ title }}</h3>
+          <code class="code-chip">{{ code }}</code>
+          <p class="step-body">{{ body }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="section section-alt">
+    <div class="container">
+      <div class="section-intro" data-reveal>
+        <span class="eyebrow">Features</span>
+        <h2 class="display section-title">Everything a session needs, <span class="display-accent">nothing it should not have.</span></h2>
+        <p class="section-lead">Esone keeps the surface area small: register, sign in, refresh. The rest is about doing those three things carefully.</p>
+      </div>
+      <div class="features">
+        {% set features = [
+          ("key", "Signed access tokens", "Every login returns an HS256-signed bearer token carrying the user id, role and token type.", "span-2", "brand"),
+          ("refresh", "Rotating refresh tokens", "Long-lived refresh tokens exchange for a new pair. The old one stops working on rotation.", "", "saffron"),
+          ("timer", "Silent renewal", "When an access token expires, the client refreshes once and retries once. No loops.", "", "ink"),
+          ("users", "Three roles", "Admin, operator and viewer. Registration always yields a viewer, so privilege is granted server-side.", "", "brand"),
+          ("shield-check", "Strict type checks", "A refresh token can never pass as an access token. Token type is validated on every protected call.", "", "saffron"),
+          ("fingerprint", "Transparent claims", "The session console decodes your JWT in the browser so you can see what you are presenting.", "span-2", "ink")
+        ] %}
+        {% for ic, title, body, span, tone in features %}
+        <article class="card feature {{ span }}" data-reveal style="--delay: {{ loop.index0 * 0.09 }}s">
+          <span class="icon-box icon-box-lg icon-box-{{ tone }}">{{ icon(ic, "icon-sm") }}</span>
+          <h3 class="feature-title">{{ title }}</h3>
+          <p class="feature-body">{{ body }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Security -->
+  <section id="security" class="section">
+    <div class="container security-grid">
+      <div data-reveal>
+        <span class="eyebrow">Security</span>
+        <h2 class="display section-title">Boring on purpose. <span class="display-accent">Safe by default.</span></h2>
+        <p class="section-lead">Esone does not try to be clever. It follows the JWT rules that are easy to get wrong and makes the result visible.</p>
+        <div class="card role-matrix">
+          <div class="card-strip">Role matrix</div>
+          <ul class="rows rows-padded">
+            {% set roles = [
+              ("Admin", "pill-ink", ["Manage users", "Edit rules", "Change settings"]),
+              ("Operator", "pill-saffron", ["Edit rules", "Run operations"]),
+              ("Viewer", "pill-brand", ["Read dashboards", "Inspect own session"])
+            ] %}
+            {% for name, tone, can in roles %}
+            <li class="role-row">
+              <span class="pill pill-wide {{ tone }}">{{ name }}</span>
+              <ul class="role-can">
+                {% for c in can %}<li>{{ icon("check", "icon-xs text-brand") }}{{ c }}</li>{% endfor %}
+              </ul>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="principles">
+        {% set principles = [
+          ("lock", "Passwords are hashed, never stored", "Registration hashes the password server-side. The UI never keeps it beyond the request."),
+          ("timer", "Access tokens expire fast", "Short expiry limits what a leaked token can do. The refresh token lives longer but rotates on use."),
+          ("user-check", "Roles are assigned, not chosen", "The register schema ignores privileged roles. Admin and operator are granted by an administrator."),
+          ("shield-check", "No credentials in the client", "The frontend ships no secrets. Tokens live in local storage and clear on sign-out or failed refresh.")
+        ] %}
+        {% for ic, title, body in principles %}
+        <article class="principle" data-reveal style="--delay: {{ loop.index0 * 0.09 }}s">
+          <span class="icon-box icon-box-brand">{{ icon(ic, "icon-sm") }}</span>
+          <div>
+            <h3 class="principle-title">{{ title }}</h3>
+            <p class="principle-body">{{ body }}</p>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="section section-alt">
+    <div class="container faq-grid">
+      <div data-reveal>
+        <span class="eyebrow">FAQ</span>
+        <h2 class="display section-title">Questions people <span class="display-accent">actually ask.</span></h2>
+        <p class="section-lead">Short answers about storage, expiry and roles. Everything here matches what the backend does.</p>
+      </div>
+      <div class="card faq" data-reveal style="--delay: .1s">
+        {% set faqs = [
+          ("Where are tokens stored?", "In the browser's local storage under access_token and refresh_token. They are removed on sign-out and whenever a refresh attempt fails."),
+          ("What happens when my access token expires?", "The next API call gets a 401. The client calls the refresh endpoint once, stores the new pair, and retries the original request once. If the refresh fails you are sent back to sign in."),
+          ("Can I register as an admin?", "No. Registration always creates a viewer account. Elevated roles are assigned by an administrator from the Users page."),
+          ("Does the UI verify the signature?", "No. The session console decodes the payload for display only. Verification happens on the server with the HS256 secret, which the browser never sees."),
+          ("Which backend does Esone talk to?", "The Esone API, a FastAPI service whose address the page server sets from ESONE_WEB_API_URL. All routes live under /api/v1.")
+        ] %}
+        {% for q, a in faqs %}
+        <details class="faq-item" {% if loop.first %}open{% endif %}>
+          <summary>{{ q }}{{ icon("plus", "icon-xs faq-plus") }}</summary>
+          <p>{{ a }}</p>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section">
+    <div class="container">
+      <div class="cta" data-reveal>
+        <span class="cta-glow cta-glow-a" aria-hidden="true"></span>
+        <span class="cta-glow cta-glow-b" aria-hidden="true"></span>
+        <div class="cta-inner">
+          <p class="cta-eyebrow">Get started</p>
+          <h2 class="cta-title">Create an account and <span class="cta-accent">read your first token.</span></h2>
+          <p class="cta-lead">Registration takes one form. You will land in the session console with a live countdown to your next refresh.</p>
+          <div class="cta-actions">
+            <a href="/register" class="btn btn-lg btn-on-brand">Create account {{ icon("arrow-right", "icon-xs icon-shift") }}</a>
+            <a href="/login" class="btn btn-lg btn-on-brand-outline">Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% include "_footer.html" %}
+{% endblock %}

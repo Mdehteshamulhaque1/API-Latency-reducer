@@ -1,0 +1,17 @@
+{
+  "name": "esone-web",
+  "version": "2.0.0",
+  "private": true,
+  "description": "TypeScript for the Esone pages. Compiled with tsc to esone_web/static/js; the output is committed.",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

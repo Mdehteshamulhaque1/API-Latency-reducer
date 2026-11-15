@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block body %}
+<main class="auth">
+  <div class="wash" aria-hidden="true"><span class="wash-a"></span><span class="wash-b"></span></div>
+  <div class="auth-shell">
+    <div class="auth-top">
+      <a href="/" class="logo" aria-label="Esone home">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="9.5" r="3.5" fill="#fff"/><path d="M10.4 12.5h3.2l1.1 6.5H9.3l1.1-6.5Z" fill="#fff"/></svg></span>
+        <span class="logo-text">Esone</span>
+      </a>
+      <a href="/" class="auth-home">{{ icon("arrow-left", "icon-xxs") }}Home</a>
+    </div>
+
+    <div class="auth-middle fade-in">
+      <nav class="auth-tabs" aria-label="Account">
+        <a href="/login" {% if page == "login" %}class="is-active" aria-current="page"{% endif %}>Sign in</a>
+        <a href="/register" {% if page == "register" %}class="is-active" aria-current="page"{% endif %}>Create account</a>
+      </nav>
+
+      <div class="card auth-card">
+        <h1 class="display auth-title">{% block auth_title %}{% endblock %}</h1>
+        <p class="auth-subtitle">{% block auth_subtitle %}{% endblock %}</p>
+        <div class="auth-form">{% block form %}{% endblock %}</div>
+      </div>
+
+      <p class="auth-footer">{% block auth_footer %}{% endblock %}</p>
+    </div>
+
+    <p class="auth-note">Tokens are stored in this browser only and cleared on sign-out.</p>
+  </div>
+</main>
+{% endblock %}

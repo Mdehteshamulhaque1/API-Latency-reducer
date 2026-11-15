@@ -1,0 +1,51 @@
+{% from "_icons.html" import icon %}
+<header class="navbar" id="navbar">
+  <nav class="navbar-inner container" aria-label="Main">
+    <a href="/" class="logo" aria-label="Esone home">
+      <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="9.5" r="3.5" fill="#fff"/><path d="M10.4 12.5h3.2l1.1 6.5H9.3l1.1-6.5Z" fill="#fff"/></svg></span>
+      <span class="logo-text">Esone</span>
+    </a>
+
+    <ul class="navbar-links">
+      <li><a href="/#how">How it works</a></li>
+      <li><a href="/#features">Features</a></li>
+      <li><a href="/#security">Security</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+
+    <div class="navbar-actions">
+      <span class="navbar-group" data-auth="in">
+        <a href="/admin" class="btn btn-ghost btn-sm" data-admin-only hidden>{{ icon("users", "icon-xs") }}Users</a>
+        <a href="/account" class="btn btn-subtle btn-sm">{{ icon("user", "icon-xs") }}<span data-role-label>Session</span></a>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="logout">{{ icon("log-out", "icon-xs") }}Sign out</button>
+      </span>
+      <span class="navbar-group" data-auth="out">
+        <a href="/login" class="btn btn-ghost btn-sm">Sign in</a>
+        <a href="/register" class="btn btn-dark btn-sm">Create account</a>
+      </span>
+    </div>
+
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+      <span class="icon-menu">{{ icon("menu", "icon-xs") }}</span>
+      <span class="icon-close">{{ icon("x", "icon-xs") }}</span>
+    </button>
+  </nav>
+
+  <div class="mobile-menu container" id="mobile-menu" hidden>
+    <a href="/#how">How it works</a>
+    <a href="/#features">Features</a>
+    <a href="/#security">Security</a>
+    <a href="/#faq">FAQ</a>
+    <div class="mobile-menu-actions">
+      <span class="stack-sm" data-auth="in">
+        <a href="/admin" class="btn btn-outline" data-admin-only hidden>{{ icon("users", "icon-xs") }}Users</a>
+        <a href="/account" class="btn btn-subtle">{{ icon("user", "icon-xs") }}Session</a>
+        <button type="button" class="btn btn-ghost" data-action="logout">{{ icon("log-out", "icon-xs") }}Sign out</button>
+      </span>
+      <span class="stack-sm" data-auth="out">
+        <a href="/login" class="btn btn-outline">Sign in</a>
+        <a href="/register" class="btn btn-dark">Create account</a>
+      </span>
+    </div>
+  </div>
+</header>

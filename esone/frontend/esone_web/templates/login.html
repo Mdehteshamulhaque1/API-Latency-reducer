@@ -1,0 +1,36 @@
+{% extends "auth.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Sign in · Esone{% endblock %}
+{% block auth_title %}Welcome back{% endblock %}
+{% block auth_subtitle %}Sign in with your Esone username and password.{% endblock %}
+
+{% block form %}
+<form id="login-form" class="form" novalidate>
+  <div id="form-alert" hidden></div>
+
+  <div class="field">
+    <label for="username">Username</label>
+    <input id="username" name="username" class="input" autocomplete="username" placeholder="your-handle">
+  </div>
+
+  <div class="field">
+    <label for="password">Password</label>
+    <div class="pw-wrap">
+      <input id="password" name="password" type="password" class="input input-pw" autocomplete="current-password" placeholder="Your password">
+      <button type="button" class="pw-toggle" data-password-toggle aria-label="Show password" tabindex="-1">
+        {{ icon("eye", "icon-xs icon-eye") }}{{ icon("eye-off", "icon-xs icon-eye-off") }}
+      </button>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">
+    <span class="btn-idle">Sign in {{ icon("arrow-right", "icon-xs icon-shift") }}</span>
+    <span class="btn-pending"><span class="spinner"></span>Signing in</span>
+  </button>
+  <p id="slow-notice" class="slow-notice" role="status" hidden>Still working. The server may be waking up, which can take up to a minute on free hosting.</p>
+</form>
+{% endblock %}
+
+{% block auth_footer %}New here? <a href="/register" class="link">Create an account</a>{% endblock %}
+
+{% block scripts %}<script type="module" src="{{ url_for('static', path='js/login.js') }}?v={{ asset_version }}"></script>{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Users · Esone{% endblock %}
+
+{% block body %}
+{% include "_navbar.html" %}
+<main class="page">
+  <div class="wash wash-soft" aria-hidden="true"><span class="wash-a"></span><span class="wash-b"></span></div>
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Administration</p>
+        <h1 class="display page-title">Users</h1>
+        <p class="page-lead">Change roles and deactivate accounts. Deactivating a user revokes their refresh tokens immediately.</p>
+      </div>
+      <div class="page-actions" id="admin-actions" hidden>
+        <button type="button" id="reload-btn" class="btn btn-outline btn-sm">{{ icon("refresh", "icon-xxs") }}Reload</button>
+      </div>
+    </div>
+
+    <div id="not-admin" class="alert alert-destructive" hidden>
+      {{ icon("shield-alert", "icon-xs") }}
+      <div>This page is only available to administrators.</div>
+    </div>
+
+    <div id="admin-panel" class="stack-sm" hidden>
+      <div id="admin-error" hidden></div>
+      <div id="admin-notice" hidden></div>
+      <div class="card card-flush">
+        <div class="card-strip card-strip-row">
+          <span class="font-medium">All accounts</span>
+          <span class="text-muted" id="users-total"></span>
+        </div>
+        <div id="users-body"></div>
+      </div>
+    </div>
+  </div>
+</main>
+{% include "_footer.html" %}
+{% endblock %}
+
+{% block scripts %}<script type="module" src="{{ url_for('static', path='js/admin.js') }}?v={{ asset_version }}"></script>{% endblock %}

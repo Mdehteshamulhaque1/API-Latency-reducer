@@ -1,0 +1,66 @@
+{% extends "auth.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Create account · Esone{% endblock %}
+{% block auth_title %}Create your account{% endblock %}
+{% block auth_subtitle %}Pick a username, add your email and choose a strong password. You will be signed in right away.{% endblock %}
+
+{% block form %}
+<form id="register-form" class="form" novalidate>
+  <div id="form-alert" hidden></div>
+
+  <div class="field">
+    <label for="username">Username</label>
+    <input id="username" name="username" class="input" autocomplete="username" placeholder="your-handle">
+  </div>
+
+  <div class="field">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" class="input" autocomplete="email" placeholder="you@company.com">
+  </div>
+
+  <div class="field">
+    <label for="password">Password</label>
+    <div class="pw-wrap">
+      <input id="password" name="password" type="password" class="input input-pw" autocomplete="new-password" placeholder="At least 8 characters">
+      <button type="button" class="pw-toggle" data-password-toggle aria-label="Show password" tabindex="-1">
+        {{ icon("eye", "icon-xs icon-eye") }}{{ icon("eye-off", "icon-xs icon-eye-off") }}
+      </button>
+    </div>
+    <div class="strength" aria-live="polite">
+      <div class="strength-bars" id="strength">
+        <span class="strength-bar"></span><span class="strength-bar"></span><span class="strength-bar"></span><span class="strength-bar"></span>
+      </div>
+      <span class="strength-label" id="strength-label"></span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="confirm">Confirm password</label>
+    <div class="pw-wrap">
+      <input id="confirm" name="confirm" type="password" class="input input-pw" autocomplete="new-password" placeholder="Repeat your password">
+      <button type="button" class="pw-toggle" data-password-toggle aria-label="Show password" tabindex="-1">
+        {{ icon("eye", "icon-xs icon-eye") }}{{ icon("eye-off", "icon-xs icon-eye-off") }}
+      </button>
+    </div>
+  </div>
+
+  <ul class="checklist">
+    <li data-check="username"><span class="check-box">{{ icon("check", "icon-xxs") }}</span>Username has 3+ characters</li>
+    <li data-check="email"><span class="check-box">{{ icon("check", "icon-xxs") }}</span>Email looks valid</li>
+    <li data-check="password"><span class="check-box">{{ icon("check", "icon-xxs") }}</span>Password has 8+ characters</li>
+    <li data-check="match"><span class="check-box">{{ icon("check", "icon-xxs") }}</span>Passwords match</li>
+  </ul>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">
+    <span class="btn-idle">Create account {{ icon("arrow-right", "icon-xs icon-shift") }}</span>
+    <span class="btn-pending"><span class="spinner"></span>Creating account</span>
+  </button>
+  <p id="slow-notice" class="slow-notice" role="status" hidden>Still working. The server may be waking up, which can take up to a minute on free hosting.</p>
+
+  <p class="form-note">New accounts start with the <span class="text-ink font-medium">viewer</span> role.</p>
+</form>
+{% endblock %}
+
+{% block auth_footer %}Already have an account? <a href="/login" class="link">Sign in</a>{% endblock %}
+
+{% block scripts %}<script type="module" src="{{ url_for('static', path='js/register.js') }}?v={{ asset_version }}"></script>{% endblock %}
