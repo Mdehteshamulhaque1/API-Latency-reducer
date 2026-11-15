@@ -51,9 +51,33 @@ pytest -q
 The tests render every page, check the API URL and security headers, confirm
 every referenced script exists, and fail if the compiled JS is missing.
 
-## Deploy on Render
+## Deploy on Vercel
 
-The service is `esone-web` in the repo-root `render.yaml` (Python runtime,
-`rootDir: frontend`). It needs one variable, `ESONE_WEB_API_URL`, the public URL
-of the API. The value is read at request time, so changing it only needs a
-restart. Full walkthrough: [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+The frontend is deployed as a **static site**. `build.py` renders every
+template to HTML once and copies `static/` next to it; Vercel serves the
+result from its CDN. Nothing runs on a server, so there are no cold starts.
+
+```bash
+cd frontend
+ESONE_WEB_API_URL=https://esone-api.onrender.com python build.py   # -> dist/
+npx serve dist        # optional local preview with clean URLs
+```
+
+On Vercel:
+
+1. Import the GitHub repo. Set **Root Directory** to `frontend` and leave
+   **Framework Preset** on *Other*. `vercel.json` already supplies the install
+   command, build command (`python3 build.py --out dist`), output directory,
+   clean URLs and security headers.
+2. Add the environment variable `ESONE_WEB_API_URL` =
+   `https://esone-api.onrender.com` (no trailing slash) for Production and
+   Preview. It is baked into the pages at build time, so changing it needs a
+   redeploy.
+3. Deploy, then put the Vercel URL into `ESONE_CORS_ORIGINS` on the API
+   service (and `ESONE_CORS_ORIGIN_REGEX` for preview URLs). Full
+   walkthrough: [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+
+The dev server (`uvicorn esone_web.main:app`) and `build.py` share the same
+templates, settings and page table, so what you see locally is what Vercel
+serves. The page server can also be hosted on Render if you ever prefer a
+single provider; see the note in `render.yaml`.

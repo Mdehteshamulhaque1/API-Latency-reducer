@@ -1,17 +1,18 @@
 # Deploying Esone: Render + Supabase
 
-Esone runs as two Render web services with a Supabase Postgres database.
-Both are declared in the repo-root `render.yaml`, so the whole stack can be
-created from the Render Blueprint screen in one go.
+Esone runs as three pieces:
 
-| Service | Folder | Runtime | Health check |
+| Piece | Where | Folder | How |
 | --- | --- | --- | --- |
-| `esone-api` | `backend/` | Python 3.11, uvicorn | `/api/v1/health` |
-| `esone-web` | `frontend/` | Python 3.11, uvicorn | `/healthz` |
+| Database | Supabase | | Postgres, session pooler |
+| API (`esone-api`) | Render | `backend/` | Python web service from `render.yaml`, health `/api/v1/health` |
+| Frontend | Vercel | `frontend/` | Static site built by `build.py`, config in `frontend/vercel.json` |
 
-Both services are defined in `render.yaml`: `esone-api` (`rootDir: backend`)
-and `esone-web` (`rootDir: frontend`). Both are Python; no Node is needed on
-Render because the frontend's compiled JavaScript is committed.
+Order matters only slightly: create the API first so you know its URL, then
+the frontend, then paste the frontend URL back into the API's CORS variable.
+
+No Node.js is needed on either host: the frontend's compiled JavaScript is
+committed, and both the Render build and the Vercel build only run Python.
 
 ## 1. Supabase
 
@@ -35,8 +36,7 @@ Render because the frontend's compiled JavaScript is committed.
 
 1. Push the repo to GitHub.
 2. Render dashboard > **New > Blueprint** > select the repo. Render reads
-   `render.yaml` and offers `api-optimizer`, `esone-api` and `esone-web`.
-   Deselect `api-optimizer` if you only want Esone.
+   `render.yaml` and offers `esone-api`.
 3. Render prompts for every variable marked `sync: false`. Fill them in:
 
    `esone-api`
@@ -44,8 +44,8 @@ Render because the frontend's compiled JavaScript is committed.
    | Variable | Value |
    | --- | --- |
    | `DATABASE_URL` | the Supabase session-pooler URI from step 1 |
-   | `ESONE_CORS_ORIGINS` | `https://esone-web.onrender.com` (comma-separated if several; no trailing slash) |
-   | `ESONE_CORS_ORIGIN_REGEX` | leave blank (only needed to allow extra origins by pattern) |
+   | `ESONE_CORS_ORIGINS` | your Vercel production URL, e.g. `https://esone.vercel.app` (comma-separated if several; no trailing slash). Fill in after step 3 if you do not know it yet |
+   | `ESONE_CORS_ORIGIN_REGEX` | `^https://esone[a-z0-9-]*\.vercel\.app$` so Vercel preview deployments can call the API (adjust `esone` to your Vercel project name) |
    | `ESONE_ADMIN_USERNAME` | first admin's username, e.g. `admin` |
    | `ESONE_ADMIN_EMAIL` | first admin's email |
    | `ESONE_ADMIN_PASSWORD` | first admin's password, 8 to 100 characters |
@@ -54,39 +54,52 @@ Render because the frontend's compiled JavaScript is committed.
    `ESONE_SECRET_KEY` come from the blueprint. Do not reuse the secret across
    environments; rotating it signs everyone out.
 
-   `esone-web`
+   The Render service name becomes the hostname. If Render had to pick another
+   name (for example `esone-api-x1y2`), use that hostname as the API URL in
+   step 3.
+4. Click **Apply**. The build takes a few minutes. Note the service URL.
+
+Manual alternative (no blueprint): create a Web Service by hand with root
+directory `backend`, build `pip install -r requirements.txt`, start
+`uvicorn esone_api.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`,
+health check `/api/v1/health`, and the same variables.
+
+## 3. Vercel (frontend)
+
+1. https://vercel.com > **Add New > Project** > import the GitHub repo.
+2. Set **Root Directory** to `frontend`. Leave **Framework Preset** as
+   *Other*; `frontend/vercel.json` supplies the install command
+   (`python3 -m pip install -r requirements.txt`), the build command
+   (`python3 build.py --out dist`), the output directory, clean URLs and the
+   security headers.
+3. Under **Environment Variables** add, for Production and Preview:
 
    | Variable | Value |
    | --- | --- |
-   | `ESONE_WEB_API_URL` | `https://esone-api.onrender.com` (no trailing slash) |
+   | `ESONE_WEB_API_URL` | the Render API URL, e.g. `https://esone-api.onrender.com` (no trailing slash) |
 
-   `ESONE_WEB_ENV=production` and `PYTHON_VERSION` come from the blueprint.
-   The Render service name becomes the hostname. If Render had to pick another
-   name (for example `esone-api-x1y2`), use that hostname in both
-   `ESONE_WEB_API_URL` and `ESONE_CORS_ORIGINS`. The page server reads
-   `ESONE_WEB_API_URL` at request time, so a restart is enough.
-4. Click **Apply**. Builds take a few minutes.
+   The value is baked into the HTML at build time, so changing it later means
+   **Redeploy** from the Vercel dashboard.
+4. Click **Deploy**. Vercel prints the production URL (for example
+   `https://esone.vercel.app`).
+5. Back on Render, set `ESONE_CORS_ORIGINS` on `esone-api` to that URL and
+   save; the service restarts. Without this step the browser blocks every
+   API call with a CORS error.
 
-Manual alternative (no blueprint): create two Web Services by hand with
-root directory `backend` (build `pip install -r requirements.txt`, start
-`uvicorn esone_api.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`,
-health check `/api/v1/health`) and root directory `frontend` (build
-`pip install -r requirements.txt`, start
-`uvicorn esone_web.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`,
-health check `/healthz`), with the same variables.
-
-## 3. Verify
+## 4. Verify
 
 1. `https://esone-api.onrender.com/api/v1/health` returns
    `{"status":"healthy","database":"healthy","version":"1.0.0"}`.
 2. Supabase Table Editor shows `users` and `refresh_tokens`, with the admin row.
-3. Open `https://esone-web.onrender.com`, sign in as the admin, open
-   **Users**. Register a second account in a private window; it appears in
-   the list with role `viewer`.
+3. Open the Vercel URL, sign in as the admin, open **Users**. Register a
+   second account in a private window; it appears in the list with role
+   `viewer`. If sign-in fails with a network or CORS error, re-check
+   `ESONE_CORS_ORIGINS` and `ESONE_WEB_API_URL`.
 4. Once the admin exists you can delete the three `ESONE_ADMIN_*` variables
    from the Render dashboard.
 
-Free Render instances sleep after inactivity; the first request after a sleep
-can take 30 to 60 seconds. The frontend shows a "waking the server" note while
-it waits. Both free services sleep independently. The in-memory login rate
-limiter is per instance, which is fine on one free instance.
+The free Render instance sleeps after inactivity; the first API request after
+a sleep can take 30 to 60 seconds. The frontend shows a "waking the server"
+note while it waits. The static frontend on Vercel never sleeps. The
+in-memory login rate limiter is per instance, which is fine on one free
+instance.

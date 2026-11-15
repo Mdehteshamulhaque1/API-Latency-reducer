@@ -5,11 +5,11 @@ JWT authentication platform. Two small Python services:
 | Folder | What | Stack |
 | --- | --- | --- |
 | `backend/` | Esone API: register, login, refresh, logout, profile, password change, admin user management | FastAPI, SQLAlchemy 2 async, SQLite locally, Supabase Postgres in production |
-| `frontend/` | Esone Web: the landing page, sign-in and sign-up forms, session console and admin users table | FastAPI page server, Jinja2 templates, plain CSS, TypeScript compiled to browser JavaScript |
+| `frontend/` | Esone Web: the landing page, sign-in and sign-up forms, session console and admin users table | Jinja2 templates rendered to static HTML by `build.py` (FastAPI page server for local dev), plain CSS, TypeScript compiled to browser JavaScript |
 
 No React, no Next.js, no bundler. The TypeScript in `frontend/src` is compiled
-by `tsc` to plain ES modules which are committed, so deploying needs only
-Python.
+by `tsc` to plain ES modules which are committed. In production the frontend is
+a static site on Vercel and the API is a Python service on Render.
 
 ## Repository layout
 
@@ -22,18 +22,20 @@ esone/
 │   └── .env.example         ESONE_* variables
 ├── frontend/                Esone Web (FastAPI page server)
 │   ├── esone_web/
-│   │   ├── main.py          routes, settings, security headers
+│   │   ├── main.py          dev server: routes, settings, security headers
 │   │   ├── templates/       Jinja2 pages and partials
 │   │   └── static/          css/app.css and js/ (compiled from src/, committed)
 │   ├── src/                 TypeScript sources (tsc -> esone_web/static/js)
-│   ├── tests/               pytest suite for the page server
+│   ├── build.py             renders templates + static into dist/ for Vercel
+│   ├── vercel.json          Vercel build settings, clean URLs, security headers
+│   ├── tests/               pytest suite for the page server and the build
 │   ├── requirements.txt
 │   ├── package.json         only devDependency: typescript
 │   └── .env.example         ESONE_WEB_* variables
 ├── docs/
 │   └── DEPLOYMENT.md        Render + Supabase walkthrough and variables
 ├── .github/workflows/ci.yml tests, lint and type-check on every push
-├── render.yaml              Render Blueprint (esone-api, esone-web)
+├── render.yaml              Render Blueprint (esone-api)
 ├── ruff.toml                shared Python lint settings
 └── .editorconfig
 ```
@@ -72,16 +74,17 @@ The same checks run in GitHub Actions on every push (`.github/workflows/ci.yml`)
 
 ## Deploy
 
-Both services run on Render; the database is Supabase Postgres. Everything is
-declared in `render.yaml`. The step-by-step guide with every environment
-variable is [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Short version:
+Database on Supabase, API on Render, frontend as a static site on Vercel.
+The step-by-step guide with every environment variable is
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Short version:
 
 1. Create a Supabase project and copy the **session pooler** connection string.
-2. Render > New > Blueprint > pick this repo. Fill in the variables Render asks
-   for (`DATABASE_URL`, `ESONE_CORS_ORIGINS`, `ESONE_ADMIN_*`,
-   `ESONE_WEB_API_URL`).
-3. Open `https://esone-api.onrender.com/api/v1/health`, then
-   `https://esone-web.onrender.com`.
+2. Render > New > Blueprint > pick this repo. Fill in `DATABASE_URL` and the
+   `ESONE_ADMIN_*` variables.
+3. Vercel > Add New Project > pick this repo, root directory `frontend`, add
+   `ESONE_WEB_API_URL` = the Render URL.
+4. Put the Vercel URL into `ESONE_CORS_ORIGINS` on Render.
+5. Open `https://esone-api.onrender.com/api/v1/health`, then the Vercel URL.
 
 Free Render instances sleep after 15 minutes without traffic; the first
 request afterwards can take up to a minute. The sign-in form shows a

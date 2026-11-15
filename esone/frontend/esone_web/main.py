@@ -7,6 +7,7 @@ address of the Esone API, injected as <meta name="esone-api-url">.
 Run locally:   uvicorn esone_web.main:app --reload --port 4000
 On Render:     uvicorn esone_web.main:app --host 0.0.0.0 --port $PORT
 """
+import hashlib
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +26,19 @@ from esone_web import __version__
 PACKAGE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = PACKAGE_DIR / "templates"
 STATIC_DIR = PACKAGE_DIR / "static"
+
+
+def static_version() -> str:
+    """Short hash of the CSS and JS, appended as ?v= so caches refresh when assets change."""
+    digest = hashlib.sha1()
+    for path in sorted(STATIC_DIR.rglob("*")):
+        if path.is_file():
+            digest.update(path.relative_to(STATIC_DIR).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
+ASSET_VERSION = static_version()
 
 
 def normalise_api_url(value: str) -> str:
@@ -119,7 +133,7 @@ def create_app() -> FastAPI:
             context={
                 "page": page,
                 "api_url": settings.api_url,
-                "asset_version": __version__,
+                "asset_version": ASSET_VERSION,
                 "year": datetime.now(UTC).year,
             },
         )

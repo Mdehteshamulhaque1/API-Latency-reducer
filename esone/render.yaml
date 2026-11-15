@@ -1,17 +1,20 @@
-# Render Blueprint for Esone: two Python web services, database on Supabase.
+# Render Blueprint for Esone: the API on Render, database on Supabase.
+# The frontend is a static site deployed on Vercel from frontend/ (see
+# docs/DEPLOYMENT.md); it is not part of this blueprint.
 #
 #   esone-api  FastAPI in backend/. DATABASE_URL is pasted in the dashboard:
 #              Supabase *pooler* URI (host *.pooler.supabase.com, session
-#              mode, port 5432). ESONE_CORS_ORIGINS must list the frontend URL
-#              (https://esone-web.onrender.com). Optional ESONE_CORS_ORIGIN_REGEX
-#              for extra origins.
-#   esone-web  FastAPI page server in frontend/ (Jinja2 templates, plain CSS,
-#              TypeScript compiled to static JS and committed, so no Node is
-#              needed at build time). ESONE_WEB_API_URL is the esone-api URL
-#              and is read at request time. The frontend holds no secrets.
+#              mode, port 5432). ESONE_CORS_ORIGINS must list the Vercel
+#              production URL; ESONE_CORS_ORIGIN_REGEX allows preview URLs,
+#              e.g. ^https://esone[a-z0-9-]*\.vercel\.app$
 #
 # Variables marked `sync: false` are asked for in the Render dashboard and are
-# never stored in git. See backend/README.md for the full walkthrough.
+# never stored in git.
+#
+# To host the frontend on Render instead of Vercel, add a second Python web
+# service with rootDir frontend, build `pip install -r requirements.txt`,
+# start `uvicorn esone_web.main:app --host 0.0.0.0 --port $PORT`, health
+# check /healthz and the variable ESONE_WEB_API_URL.
 
 services:
   - type: web
@@ -41,21 +44,4 @@ services:
       - key: ESONE_ADMIN_EMAIL
         sync: false
       - key: ESONE_ADMIN_PASSWORD
-        sync: false
-
-  - type: web
-    name: esone-web
-    runtime: python
-    rootDir: frontend
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn esone_web.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
-    healthCheckPath: /healthz
-    autoDeploy: true
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
-      - key: ESONE_WEB_ENV
-        value: production
-      - key: ESONE_WEB_API_URL
         sync: false
