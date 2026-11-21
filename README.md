@@ -1,388 +1,403 @@
-<div align="center">
+# API Optimizer
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0F172A,50:1E293B,100:0EA5E9&height=180&section=header&text=API%20Optimizer&fontSize=52&fontColor=E2E8F0&fontAlignY=38&desc=High-performance%20API%20optimization%20platform&descSize=18&descAlignY=58&animation=fadeIn" width="100%"/>
+AI-powered API performance, intelligence and security platform.
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=20&duration=2800&pause=900&color=38BDF8&center=true&vCenter=true&width=650&lines=Redis+response+caching+for+sub-10ms+reads;Token-bucket+rate+limiting+per+user%2C+IP+%26+key;JWT+auth+with+strict+access%2Frefresh+validation;Real-time+p50%2Fp95%2Fp99+request+analytics" alt="Typing SVG" />
+A FastAPI gateway that sits in front of an HTTP API and makes it faster,
+safer, and observable: Redis response caching, token-bucket rate limiting,
+per-request analytics, an LLM gateway with fallback and a circuit breaker,
+a RAG knowledge base over uploaded documentation, an assistant that reasons
+over measured data, and basic AI guardrails. A Next.js dashboard shows all
+of it from real endpoints only.
 
-<br/>
-
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io)
-[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com)
-[![JWT](https://img.shields.io/badge/JWT-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io)
-
-</div>
+Architecture document: [`docs/ARCHITECTURE.pdf`](docs/ARCHITECTURE.pdf)
+(source: `docs/ARCHITECTURE.html`). Manual test checklist:
+[`docs/MANUAL_TESTING.md`](docs/MANUAL_TESTING.md). Repository layout:
+[`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md).
 
 ---
 
-## Overview
+## Problem statement
 
-API Optimizer is a backend infrastructure platform that reduces API latency and improves application performance. It combines:
-
-- **Redis-based response caching** — rules-driven keys, TTLs, and automatic invalidation so most reads never reach the database.
-- **Token-bucket rate limiting** — atomic per-user, per-IP, and per-key limits enforced before business logic runs.
-- **JWT authentication** — strict access/refresh token-type validation across every protected endpoint.
-- **Request analytics** — real-time latency percentiles (p50/p95/p99), cache hit ratio, and slow-endpoint rankings.
-
-## Architecture
-
-```
- Client
-   │
-   ▼
- FastAPI (middleware stack — CORS → Metrics → CorrelationID → Auth → RateLimit → Cache)
-   │
-   ├── Metrics ────────────────► logs to database
-   ├── Auth ───────────────────► JWT (type = "access")
-   ├── Rate Limit ─────────────► Redis token bucket
-   └── Cache ──────────────────► Redis lookup
-         │
-         ├── HIT  ─────────────► respond from cache
-         └── MISS ─────────────► business logic ──► database
-                                    │
-                                    ▼
-                              write-through to Redis (TTL)
-```
-
-Middleware order is deliberate: **Auth runs outside the rate limiter** so the limiter always has `request.state.user_id`, and the cache layer sits innermost so auth, rate limiting, and metrics always run before a cached response short-circuits the request.
-
-**Fail-open behavior:** if Redis is down, caching and rate limiting degrade gracefully — rate limits are allowed and cache lookups miss — so the API keeps serving traffic.
+Teams usually discover slow endpoints from user complaints, add caching by
+guesswork, and cannot tell what an AI feature costs or whether a prompt was
+abused. API Optimizer measures every request, applies caching and limits
+with explicit rules, and puts an assistant on top of the measured data,
+with every answer showing the facts it was built from.
 
 ## Features
 
 | Area | What it does |
 | --- | --- |
-| ⚡ Redis response caching | Pattern-based rules, user/param keying, automatic invalidation, hit/miss tracking |
-| 📊 Request analytics | Real-time counts, latency trends, percentile rankings, optimization suggestions |
-| 🚦 Token-bucket rate limiter | User + IP + API-key limits, configurable per endpoint, Redis-backed |
-| 🔐 JWT authentication | Access (30m) and refresh (7d) tokens with strict type validation |
-| 📈 Performance monitoring | p50 / p95 / p99 latency, slow-endpoint rankings |
-| 🛡 Role-based access control | Admin, operator, and viewer roles gate every mutation |
-| 🐳 Docker support | Single-container deploy with health checks (`docker-compose.yml` + `render.yaml`) |
-| 📋 API documentation | Auto-generated interactive OpenAPI docs at `/docs` |
+| Response caching | Rules per endpoint pattern: TTL, key by user/query/headers, size budget, priority. Only `GET` + `200` is cached; authenticated responses are keyed per user. Stats and invalidation API. |
+| Rate limiting | Token bucket in a Redis Lua script, keyed by user or client IP, sized by tier: anonymous 60/min, signed-in 300/min, operator and admin 1000/min. IETF `RateLimit-*` plus `X-RateLimit-*` headers, `Retry-After` on 429. Fails open. |
+| Auth and RBAC | bcrypt, HS256 access and refresh tokens with `jti`, logout with a Redis revocation denylist. Roles `admin`, `operator`, `viewer`. |
+| Analytics | Totals, error and 429 counts, cache ratio, p50/p95/p99 via SQL window functions, latency series, slow endpoints, benchmark. |
+| Structured logging | JSON logs with a correlation id on every line and in the `X-Correlation-ID` header. No secrets, no bodies. |
+| LLM gateway | `POST /api/v1/chat`: exact-match cache, retries, primary then fallback model, circuit breaker, Prometheus metrics, estimated cost. |
+| AI usage | One row per LLM call: tokens, latency, outcome, estimated cost. `/api/v1/ai-usage`. |
+| Guardrails | Prompt-injection heuristics (block on high severity), regex PII masking before the provider call, output validation, grounding score, audit events. |
+| Assistant | `/api/v1/assistant/ask`: controlled metric tools, facts returned next to the answer, measured vs hypothesis labelling. Cache recommendations (advisory) and troubleshooting. |
+| Knowledge base | Upload PDF/TXT/MD, chunk, embed, store in ChromaDB, semantic search, grounded answers with sources or an explicit "not enough information". |
+| Dashboard | Next.js 14 console: overview, analytics, cache, rate limits, cache rules, assistant, knowledge base, LLM gateway, AI usage, AI security, status. |
+| Answers | `POST /api/v1/answers`: a shared semantic question cache in Redis (exact match, then embeddings with a lexical fallback; 2 h TTL, 10 min for time-sensitive questions; numbers, dates and words like "today" must agree before two questions share an answer; questions carrying personal data are never cached), on a miss the model answers from its own knowledge first (it must say UNKNOWN when unsure, and is skipped for time-sensitive questions), then Wikipedia, then DuckDuckGo, Wikidata and an optional keyed web search (Brave or Google, trusted domains first, pages fetched and reduced to text), with the answer composed by the LLM from the pages or quoted from the best page; `ANSWERS_MODEL_FIRST=False` restores sources-first. Every request writes its own `answer_logs` row per caller and end user (`user_ref`), including shared cache hits, blocked and failed requests, with cache key, latency components, tokens and estimated cost; a Redis list keeps the last hour. `GET /api/v1/answers/recent`, `/top` and `/stats` (optionally `?end_user=`) feed the dashboard's Answer cache page. Esone's chat uses this and keeps each user's private query log. Non-cached answers are billed per token in INR (`ANSWERS_INR_PER_TOKEN`, default 5); cache hits and RAG are free; the dashboard's Pricing page shows each user's charges. |
 
-## Tech Stack
-
-| Layer | Technology |
-| --- | --- |
-| Backend | FastAPI (async) |
-| Language | Python 3.11+ |
-| Database | SQLAlchemy 2.0 async — SQLite (local, default) or MySQL |
-| Cache / queue | Redis |
-| Authentication | JWT (`python-jose`) |
-| Task queue | Celery (optional — app boots without a broker) |
-| Frontend (dashboard) | React + Vite + Recharts + Tailwind |
-| Frontend (marketing site) | Next.js 14 + Tailwind + Framer Motion |
-| Container | Docker |
-
-## Repository Layout
+## Architecture
 
 ```
-.
-├── app/                 # FastAPI backend
-│   ├── api/v1/          # Routers: auth, health, analytics, rules
-│   ├── core/            # Config, security, exceptions, constants
-│   ├── database/        # SQLAlchemy engine, session, base
-│   ├── middleware/      # auth · cache · rate_limit · metrics · correlation_id
-│   ├── models/          # SQLAlchemy models
-│   ├── schemas/         # Pydantic request/response schemas
-│   ├── services/        # Business logic: analytics, auth, cache, rate_limit
-│   ├── tasks/           # Celery background tasks
-│   └── utils/           # Logging, Redis client
-├── frontend/            # React dashboard (Vite) — deploys to Vercel
-├── site/                # Next.js marketing site — deploys to Vercel
-├── tests/               # pytest suite (JWT token-type security tests)
-├── loadtest/            # k6 load-test benchmark script
-├── migrate_db.py        # Creates tables + default admin user
-├── setup_mysql.py       # One-shot MySQL setup helper
-├── seed_demo.py         # Seeds demo users, rules, and the /api/v1/demo/latency endpoint
-├── test_api.py          # End-to-end API smoke tests
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml   # Backend + Redis + frontend (local)
-├── render.yaml          # Render.com deploy config (backend)
-└── .env.example         # Backend env template
+client ──► CORS ──► Metrics ──► CorrelationId ──► Auth ──► RateLimit ──► Cache ──► route
+                       │                                       │            │
+                       │                                       │            └─ Redis response cache
+                       │                                       └─ Redis token buckets
+                       └─ api_logs + hourly analytics (background task)
+
+AI question ──► guardrails ──► metric tools / vector retrieval ──► context ──► LLM gateway
+            ──► output validation + sources ──► response ──► ai_request_logs + guardrail_events
 ```
 
-## Getting Started
+Modular monolith: `app/api/v1` (routers), `app/services` (business logic),
+`app/ai` (guardrails, assistant, RAG), `app/models` (SQLAlchemy),
+`app/schemas` (Pydantic), `app/middleware`. Full description with the data
+model, failure behaviour, and configuration in `docs/ARCHITECTURE.pdf`.
+
+## Tech stack
+
+Python 3.11, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, Redis
+(`redis.asyncio`), httpx, python-jose, bcrypt, prometheus_client, ChromaDB,
+pypdf. Dashboard: Next.js 14, TypeScript strict, Tailwind, recharts.
+Tests: pytest, pytest-asyncio, httpx `ASGITransport`. Load test: k6.
+
+## Repository layout
+
+```
+app/             FastAPI backend: api/v1 (routes), services, ai (answers, assistant,
+                 guardrails, rag), middleware, models, schemas, core, database, utils
+alembic/         migrations 0001..0010
+tests/           pytest suite (integration at the top level, unit/ for pure logic)
+scripts/         migrate_db.py, seed_demo.py, dev.sh (whole local stack)
+site/            Next.js dashboard: app/ (routes), components/, lib/api.ts
+esone/           Esone: backend/ (FastAPI) and frontend/ (static Jinja2 + TypeScript)
+loadtest/        k6 benchmark
+docs/            architecture, manual test checklist, project structure
+```
+
+Details and conventions: [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md).
+
+## Run everything locally
+
+One command starts Redis (Docker), the API Optimizer API and dashboard, and
+the Esone API and frontend, creating any missing `.env` files from the
+examples:
+
+```bash
+bash scripts/dev.sh start     # then open http://localhost:4000 (Esone) and http://localhost:3001 (dashboard)
+bash scripts/dev.sh status
+bash scripts/dev.sh logs
+bash scripts/dev.sh stop      # add --with-redis to stop the Redis container too
+```
+
+Requires Python (with `venv/` created and both requirements files installed),
+Node.js and Docker Desktop.
+
+## Getting started
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+ (for the frontend and site)
-- Redis (local install or managed instance)
-- MySQL only if you want production storage — the app runs on SQLite out of the box
+- Python 3.11
+- Node 20 (dashboard)
+- Redis 7 (local install or `docker run -p 6379:6379 redis:7-alpine`)
+- A Google Gemini API key (default provider, via Gemini's OpenAI-compatible
+  endpoint), an OpenAI API key, or a local Ollama server, for the AI
+  features. The core features work without any of them.
 
-### 1. Configure backend environment
-
-Copy the sample environment variables into `.env`:
-
-```bash
-cp .env.example .env
-```
-
-Key values (see `.env.example` for the full reference with comments):
-
-```dotenv
-DATABASE_URL=sqlite+aiosqlite:///./api_optimizer.db   # or mysql+aiomysql://USER:PASSWORD@HOST:3306/api_optimizer
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=<long-random-string>                        # min 32 chars; python -c "import secrets; print(secrets.token_urlsafe(64))"
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=change-me-in-production                 # change before deploying
-```
-
-### 2. Install and migrate
+### 1. Backend
 
 ```bash
 python -m venv venv
-venv\Scripts\activate            # Windows
-source venv/bin/activate         # macOS / Linux
-
+venv/Scripts/activate            # Windows   (source venv/bin/activate on POSIX)
 pip install -r requirements.txt
-python migrate_db.py             # creates 5 tables + default admin user
+cp .env.example .env             # then edit: SECRET_KEY, ADMIN_PASSWORD, OPENAI_API_KEY (your Gemini key)
+python scripts/migrate_db.py             # alembic upgrade head + admin user
+uvicorn app.main:app --reload --port 8000
 ```
 
-`migrate_db.py` creates the following tables: `users`, `api_logs`, `cache_rules`, `rate_limit_counters`, and `analytics`. It is idempotent — existing tables are left untouched.
+`GET http://localhost:8000/api/v1/health` should report `database` and
+`redis` healthy. With `DEBUG=True` the OpenAPI docs are at `/docs`.
 
-### 3. Run the backend
+Optional demo data: `python scripts/seed_demo.py` creates operator and viewer
+accounts, cache rules, and 24 hours of synthetic request logs.
 
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-- Interactive API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/api/v1/health`
-
-### 4. Run the dashboard (React/Vite)
-
-```bash
-cd frontend
-cp .env.example .env.local       # optional — defaults proxy /api to localhost:8000
-npm install
-npm run dev                      # http://localhost:5173 (proxies /api to :8000)
-```
-
-The dashboard's API base URL and docs link are configurable at build time via `VITE_API_URL` / `VITE_DOCS_URL` (see `frontend/src/lib/config.js`). With neither set, it uses relative `/api/v1` — which works out of the box with the Vite dev proxy above.
-
-### 5. Run the marketing site (Next.js)
+### 2. Dashboard
 
 ```bash
 cd site
-npm install
-npm run lint                     # eslint
-npm run dev                      # http://localhost:3000
+npm ci
+cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev                         # http://localhost:3000
 ```
 
-### Docker (backend + Redis + frontend)
+Sign in with the admin account from `.env`.
+
+### Free local AI (no key)
+
+Install [Ollama](https://ollama.com), then:
 
 ```bash
-docker-compose up --build        # backend :8000, frontend :5173, Redis
+ollama pull llama3.2
+ollama pull nomic-embed-text
 ```
 
-Or build the backend image alone:
+In `.env`:
+
+```
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
+OPENAI_MODEL=llama3.2
+OPENAI_FALLBACK_MODEL=
+EMBEDDING_MODEL=nomic-embed-text
+```
+
+## Environment variables
+
+All variables, with comments, are in `.env.example`. The important ones:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./api_optimizer.db`, or MySQL / PostgreSQL URLs |
+| `REDIS_URL` | cache, token buckets, LLM cache, revoked tokens |
+| `SECRET_KEY` | JWT signing, at least 32 characters |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | first admin, created by `scripts/migrate_db.py` |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_FALLBACK_MODEL` | LLM gateway (Gemini by default; the key is your Gemini key) |
+| `LLM_PROVIDER` | provider label in usage rows, logs and metrics (`gemini`) |
+| `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` | RAG embeddings (default to the gateway values; `gemini-embedding-001`) |
+| `CHROMA_PERSIST_DIR` | local vector store directory |
+| `GUARDRAILS_BLOCK_INJECTION`, `GUARDRAILS_MASK_PII` | guardrail switches |
+| `ANSWERS_CACHE_TTL`, `ANSWERS_VOLATILE_TTL`, `ANSWERS_RECENT_TTL` | answer cache lifetime (2 h, sliding on every hit; 10 min for time-sensitive questions) and the fast recent-questions window (1 h) |
+| `ANSWERS_SIMILARITY_THRESHOLD`, `ANSWERS_MODEL_FIRST`, `ANSWERS_LOCK_TTL`, `ANSWERS_LOCK_WAIT_SECONDS` | semantic match floor (0.92), model-first order, stampede lock |
+| `EMBEDDING_PRICE_PER_MILLION`, `PRICING_CURRENCY`, `PRICING_EFFECTIVE_DATE` | embedding price for models not in `EMBEDDING_PRICING_TABLE`; cost figures are estimates, never billing |
+| `CRAWLER_SOURCES`, `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY`, `GOOGLE_CSE_ID`, `CRAWLER_TRUSTED_DOMAINS` | crawler sources; keyed web search is optional |
+| `RATE_LIMIT_ANONYMOUS_*`, `RATE_LIMIT_USER_*`, `RATE_LIMIT_PRIVILEGED_*` | bucket capacity and refill period per tier (`_REQUESTS`, `_PERIOD`) |
+| `CORS_ORIGINS` | JSON array of dashboard origins |
+| `DEMO_ENDPOINT_ENABLED` | unauthenticated latency endpoint for benchmarks, off in production |
+
+Never commit `.env`. Secrets are never logged or returned by the API.
+
+## API overview
+
+All routes are under `/api/v1`. Protected routes need
+`Authorization: Bearer <access token>`.
+
+| Route | Access | Purpose |
+| --- | --- | --- |
+| `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | public / bearer | accounts and sessions |
+| `GET /analytics/summary`, `/analytics/endpoints`, `/analytics/slow-endpoints`, `/analytics/benchmark`, `/analytics/suggestions` | any role | measured traffic, `hours` 1..720 |
+| `GET|POST /rules`, `GET|PUT|DELETE /rules/{id}` | read any · write admin, operator · delete admin | cache rules |
+| `GET /cache/stats`, `POST /cache/invalidate` | any · admin, operator | counters and invalidation |
+| `GET /rate-limits/config`, `/rate-limits/me`, `/rate-limits/events` | any role | limiter state and 429s |
+| `POST /chat` | any role | LLM gateway, OpenAI-style messages |
+| `POST /ingest/requests` | operator, admin | request-log batch from a monitored service (Esone) |
+| `ANY /proxy/{service}/{path}` | upstream's own auth | reverse proxy to a `PROXY_UPSTREAMS` service; logged under that service |
+| `GET /analytics/services` | any role | services with request rows: this gateway and monitored ones |
+| `GET /ai-usage/summary`, `/ai-usage/requests` | any role | tokens, latency, estimated cost |
+| `GET /guardrails/summary`, `/guardrails/events`, `POST /guardrails/check` | any role | audit trail and dry run |
+| `POST /assistant/ask`, `GET /assistant/suggested-questions`, `GET /assistant/cache-recommendations`, `POST /assistant/troubleshoot` | any role | assistant features |
+| `POST /documents`, `GET /documents`, `GET|DELETE /documents/{id}` | upload/delete admin, operator | knowledge base files |
+| `POST /knowledge-base/search`, `POST /knowledge-base/ask` | any role | semantic search and grounded answers |
+| `POST /answers`, `GET /answers/recent`, `/answers/top`, `/answers/stats`, `/answers/cache`, `/answers/costs`, `/answers/users` | any role (own rows; admins all; `service=` for a monitored service) | question answering; per-caller query log (paginated, `end_user` and `cache_status` filters), most asked, hit rate, what the shared cache holds, LLM vs embedding cost and estimated savings, per-user totals |
+| `GET /health`, `GET /ping`, `GET /metrics` | public | probes and Prometheus |
+
+Admins see every user's analytics, usage, and events; other roles see their
+own.
+
+## Database
+
+Schema is managed by Alembic (`alembic/versions`). `python scripts/migrate_db.py`
+runs `alembic upgrade head` and seeds the admin. Useful commands:
 
 ```bash
-docker build -t api-optimizer .
-docker run -p 8000:8000 --env-file .env api-optimizer
+alembic current
+alembic upgrade head
+alembic downgrade -1
 ```
 
-## Deployment
+SQLite is the default and runs in WAL mode; MySQL and PostgreSQL work via
+`DATABASE_URL`. Tables: `users`, `cache_rules`, `api_logs`,
+`ai_request_logs`, `answer_logs`, `guardrail_events`, `documents`, `document_chunks`.
+The old hourly roll-up table was removed (revision 0005): every number is
+aggregated from `api_logs` directly.
 
-### Backend → Render
+## Redis
 
-`render.yaml` ships in the repo. It builds the backend image, runs `python migrate_db.py` as a pre-deploy step, and health-checks `/api/v1/health`. Set these environment variables in the Render dashboard (never hardcode secrets in the repo):
+Keys: `rule:*` cached responses, `chat:*` LLM responses, `answers:q:*`
+shared answers (question, answer, sources, embedding, generating model and
+its original tokens and cost, created / last-accessed / expires, hit count;
+2 h sliding TTL), `answers:lock:*` generation locks (stampede protection),
+`answers:stats:stored` entries-written counter, `answers:recent` the last
+hour of asked questions, `rate_limit:*` token buckets, `auth:revoked:*`
+revoked token ids, `cache:stats:*` hit/miss counters. Every feature fails open: with Redis down, requests
+still succeed without caching, limiting, or revocation checks, and
+`/health` reports `degraded`.
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `DATABASE_URL` | ✅ | `mysql+aiomysql://...` (managed MySQL) or `sqlite+aiosqlite:////data/api_optimizer.db` for a single-instance demo |
-| `REDIS_URL` | ✅ | e.g. Render Redis or Upstash — without it caching/rate-limit fail open |
-| `SECRET_KEY` | ✅ | Unique, ≥ 32 chars, **generated per deployment** |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | ✅ | Seed admin (created by `migrate_db.py`) |
-| `CORS_ORIGINS` | — | JSON array of your deployed dashboard/site origins |
-| `LOG_LEVEL` | — | `INFO` default |
+## RAG pipeline
 
-### Frontend + Site → Vercel
+1. Upload (`POST /documents`): type and size validation, SHA-256 duplicate
+   check, text extraction (pypdf for PDF), cleaning.
+2. The text is scanned for instruction-like content; matches flag the
+   document and record a `document_flagged` event. It is still indexed.
+3. Chunking: paragraph-aware, `RAG_CHUNK_SIZE` characters with
+   `RAG_CHUNK_OVERLAP`.
+4. Embedding through an OpenAI-compatible `/embeddings` endpoint.
+5. Vectors plus chunk text and metadata go to ChromaDB (cosine space);
+   chunk text and metadata also go to SQL, which is the source of truth for
+   listing and deletion.
+6. Search embeds the query, takes the top `k`, drops results below
+   `RAG_MIN_SIMILARITY`, and hydrates only chunks whose document is `ready`.
+7. Answering wraps the chunks in numbered `<source>` blocks, tells the model
+   they are data and not instructions, requires inline citations, and
+   returns the fixed "not enough information" reply (without calling the
+   model) when nothing relevant was found. A lexical grounding score is
+   reported with every answer.
 
-Both `frontend/` (Vite static) and `site/` (Next.js) are Vercel-ready. Import each folder as its own project (or use a monorepo setup), then set:
+## LLM configuration
 
-| Variable | Where | Notes |
-| --- | --- | --- |
-| `VITE_API_URL` | frontend | `https://<your-backend>.onrender.com/api/v1` — absolute backend URL, since Vercel has no dev proxy |
-| `VITE_DOCS_URL` | frontend | `https://<your-backend>.onrender.com/docs` |
-| `NEXT_PUBLIC_*` | site | Set only if the site calls the API (currently static) |
+The gateway speaks the OpenAI Chat Completions protocol to
+`OPENAI_BASE_URL`, which defaults to Gemini's OpenAI-compatible endpoint. Requests at temperature 0 are cached by exact match.
+Failures that are retry-eligible (timeouts, 429, 5xx) go to
+`OPENAI_FALLBACK_MODEL`; repeated failures open a process-local circuit
+breaker for `LLM_CIRCUIT_COOLDOWN_SECONDS`. Metrics at `/metrics`:
+`chat_requests_total`, `chat_provider_latency_seconds`,
+`chat_request_latency_seconds`, token counters,
+`chat_estimated_cost_usd_total`, `chat_fallback_total`,
+`chat_circuit_breaker_state`.
 
-Point `CORS_ORIGINS` on the backend at both deployed origins so the browser can call the API.
+Cost estimates use `PRICING_TABLE` in `app/config.py` (USD per million
+tokens) and are labelled as estimates everywhere they appear.
 
-## Authentication & Security
+## Guardrails
 
-Tokens carry a `type` claim that is enforced at the middleware level:
+- Input: every caller-supplied message is scanned against named
+  prompt-injection rules; `high` severity blocks the request with
+  `error_code=GUARDRAIL_BLOCKED` when `GUARDRAILS_BLOCK_INJECTION=True`,
+  lower severities are allowed and recorded.
+- PII: emails, phone numbers, and Luhn-valid card numbers are replaced with
+  placeholders before text leaves the service.
+- Output: answers are validated (non-empty, bounded) and scored against the
+  facts or sources that were provided; low scores are recorded.
+- Audit: `guardrail_events` stores category, severity, feature, a short
+  detail (rule names or counts), and whether the request was blocked.
+  Prompts and documents are never stored there.
+- Limitations: detection is heuristic. Paraphrased or encoded injections,
+  other languages, names, and addresses are not caught. Microsoft Presidio
+  can replace `app/ai/guardrails/pii.py` behind the same `mask_text`
+  function.
 
-- `access` tokens (30 min) may call **protected endpoints** only.
-- `refresh` tokens (7 days) may only be exchanged at `POST /api/v1/auth/refresh`.
-- A token of the wrong type is rejected with `401 Invalid token type`.
+## Monitoring another service (Esone)
 
-This closes the token-type-confusion vulnerability where a refresh token could be replayed against protected endpoints. See `tests/test_jwt_token_type.py` for the security test scenarios.
+The dashboard can analyse a different application's traffic instead of the
+gateway's own. Esone ships one record per request it served ("inbound") and
+per call it made to another host ("outbound") to
+`POST /api/v1/ingest/requests` (operator or admin role), batched every
+`ESONE_TELEMETRY_FLUSH_SECONDS` by `esone_api/telemetry.py`. Rows land in
+`api_logs` with `service`, `direction` and `upstream_host`, and every
+analytics read takes `?service=esone` (plus optional
+`direction=inbound|outbound`). `GET /api/v1/analytics/services` lists the
+services with data; the dashboard's service switch defaults to the first
+monitored one. Inbound and outbound rows share a correlation id, returned to
+Esone's callers as `X-Correlation-ID`.
+
+The ingest calls count against the service account's rate limit
+(the account must be operator, so the privileged tier
+`RATE_LIMIT_PRIVILEGED_REQUESTS` applies); give that tier enough headroom.
+
+### Proxying the service through the gateway
+
+`PROXY_UPSTREAMS={"esone":"http://localhost:8000"}` makes
+`/proxy/esone/<path>` forward to Esone and return its response unchanged.
+Point the service's frontend at `http://<gateway>/proxy/esone` and every call
+passes through this gateway's middleware: it is recorded under `service=esone`
+as it happens (no 30 s telemetry delay), rate limited per client address, and
+cached when a rule whose pattern starts with `/proxy/esone/` matches. Gateway
+rules never apply to proxied paths, and a proxied request that carries
+credentials is cached only by a rule that keys on headers. The upstream keeps
+authenticating its own users; the gateway forwards `X-Forwarded-For`,
+`X-Correlation-ID` and `X-Proxied-By`, and records an upstream
+`X-Cache-Hit: true` as a cache hit. Esone skips its own inbound telemetry for
+proxied requests so nothing is counted twice.
 
 ## Testing
 
 ```bash
-# JWT token-type security tests
-pytest tests/test_jwt_token_type.py -v
-
-# Full test suite: auth flows, cache hit/miss semantics, rate limiting
-pytest -q                      # 44 tests, no external services needed (isolated Redis db 15 + SQLite)
-
-# End-to-end API smoke tests (uses FastAPI TestClient — no server needed)
-python test_api.py
+pytest -q          # needs a local Redis; uses DB 15 and a temp ChromaDB dir
+ruff check .
+cd site && npm run lint && npx tsc --noEmit && npm run build
 ```
 
-The test suite runs entirely against isolated resources — it never touches your development Redis or database. Redis must be running locally (it uses db 15); the tests use their own SQLite file (`test_api_optimizer.db`). See `pytest.ini` and `tests/conftest.py`.
+The suite covers auth and revocation, caching and invalidation, the rate
+limiter and its headers, analytics maths against seeded rows, Prometheus
+metrics, AI usage persistence, guardrails, the RAG pipeline end to end
+(fake embeddings, real ChromaDB in a temp dir), and the assistant,
+recommendation, and troubleshooting services with a fake provider.
 
-## Load-test benchmark (cache OFF vs ON)
-
-A k6 script drives synthetic traffic at `GET /api/v1/demo/latency`, an endpoint that simulates a slow 150 ms upstream call so the caching layer has real work to absorb. The script logs in as admin, toggles the demo cache rule, and measures both runs under an identical load profile.
+## Load test
 
 ```bash
-# prerequisites: backend running on :8000, Redis up, demo rule seeded
-python seed_demo.py            # creates users + rules incl. /api/v1/demo/latency
-
-# install k6 (https://k6.io), then:
-CACHE=off k6 run loadtest/benchmark.js     # bash:  cache disabled
-CACHE=on  k6 run loadtest/benchmark.js     #        cache enabled
+python scripts/seed_demo.py                    # creates the demo cache rule
+CACHE=off k6 run loadtest/benchmark.js
+CACHE=on  k6 run loadtest/benchmark.js
 ```
 
-Env vars: `BASE_URL`, `VUS` (default 20), `DURATION` (default 30s), `SLEEP`, `ADMIN_USER` / `ADMIN_PASS`. On Windows PowerShell use `$env:CACHE='off'` first.
+The script drives `GET /api/v1/demo/latency` (needs
+`DEMO_ENDPOINT_ENABLED=True`), which simulates a 150 ms upstream. Report
+your own numbers with the VU count, duration, machine, and database used;
+results depend heavily on the environment.
 
-### Results (10 VUs, 30s, same load profile)
-
-| Metric | Cache OFF | Cache ON | Improvement |
-| --- | --- | --- | --- |
-| Avg latency | 183 ms | 7.5 ms | **~24× faster (−95.9%)** |
-| P95 latency | 208 ms | 18 ms | ~11× faster |
-| Throughput | ~35 req/s | ~91 req/s | **~2.6× more** |
-| Cache hit rate | 0% | 99.6% | — |
-
-Run with `VUS=10` (as above) for stable, spike-free numbers on SQLite; higher concurrency is bounded by the SQLite write path, not the cache. The demo endpoint is deliberately excluded from auth, rate limiting, and analytics persistence so the benchmark isolates the caching layer.
-
-## LLM Gateway (Phase 3+4+5)
-
-### Architecture
-
-The request flow, from client to response, is:
-
-```mermaid
-flowchart TB
-    subgraph "Middleware (outermost → innermost)"
-        CORS[CORS]
-        METRICS[Metrics]
-        CORREL[Correlation-ID]
-        AUTH[Auth]
-        RATE_LIMIT[Rate-Limit]
-        CACHE[Exact-Match Cache]
-    end
-    subgraph "Business Logic"
-        DIRECT[Primary Provider]
-        BREAKER[Circuit-Breaker]
-        FALLBACK[Fallback Provider]
-    end
-    CLIENT[Client] --> CORS
-    CORS --> METRICS
-    METRICS --> CORREL
-    CORREL --> AUTH
-    AUTH --> RATE_LIMIT
-    RATE_LIMIT --> CACHE
-    CACHE --> DIRECT
-    DIRECT --> BREAKER
-    BREAKER --> FALLBACK
-    FALLBACK --> METRICS
-    METRICS --> RESP[Response]
-
-    %% Connections
-    CACHE -- HIT -->|respond from cache| RESP
-    CACHE -- MISS --> DIRECT
-    BREAKER -- CLOSED --> DIRECT
-    BREAKER -- OPEN --> FALLBACK
-    style CORS fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style METRICS fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style CORREL fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style AUTH fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style RATE_LIMIT fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style CACHE fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style DIRECT fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style BREAKER fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style FALLBACK fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style RESP fill:#e0e0e0,stroke:#333,stroke-width:2px
-```
-
-**Key points:**
-
-- **Auth** runs before the rate limiter so the limiter keys on `request.state.user_id`.
-- **Cache** is innermost – auth, rate limiting and metrics always run before a cache hit short‑circuits.
-- **Circuit‑breaker** sits between primary and fallback. When OPEN, requests bypass the primary and go straight to the fallback. When CLOSED, the primary is tried first.
-- **Metrics** logs every request and persists analytics rows; `/metrics` endpoint exposes Prometheus‑compatible counters.
-
-### Environment variables (new in Phase 3‑4)
-
-| Variable | Required? | Default | Description |
-|----------|-----------|---------|-------------|
-| `OPENAI_PRIMARY_MODEL` | yes (when DEMO_ENDPOINT_ENABLED=False) | gpt-3.5-turbo | Primary model name |
-| `OPENAI_FALLBACK_MODEL` | yes (when fallback enabled) | gpt-4o | Fallback model name |
-| `LLM_CIRCUIT_FAILURE_THRESHOLD` | no | 5 | Consecutive eligible failures before breaker opens |
-| `LLM_CIRCUIT_COOLDOWN_SECONDS` | no | 30 | Cooldown before half‑open probe |
-| `LLM_CIRCUIT_HALF_OPEN_MAX_PROBES` | no | 1 | Max probes in half‑open state |
-| `LLM_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD` | no | 1 | Successes needed to close breaker |
-| `CHAT_PROMPT_PRICE_PER_MILLION` | no | 0.001 | Prompt price / M tokens (overrides global) |
-| `CHAT_COMPLETION_PRICE_PER_MILLION` | no | 0.002 | Completion price / M tokens (overrides global) |
-| `DEMO_ENDPOINT_ENABLED` | no | False | When True, `/api/v1/demo/latency` is unprotected/unthrottled |
-| `TRUSTED_PROXIES` | no | [] | Comma‑separated or JSON array of trusted proxy IPs |
-
-### How to run the evaluation harness (Phase 5)
+## Docker
 
 ```bash
-# 1️⃣  Start the mock OpenAI server (in eval/ directory)
-python -m uvicorn eval.mock_openai:app --host 0.0.0.0 --port 8001
-
-# 2️⃣  Run Locust workload
-locust -f eval/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 30s
-
-# 3️⃣  Generate the markdown report
-python -m eval.run_eval          # writes docs/EVAL.md
+docker compose up --build     # redis + backend on :8000
 ```
 
-The generated `docs/EVAL.md` contains a table of latency, RPS, error rate, fallback rate and cost‑per‑1k‑requests for the three scenarios (Cache OFF/ON, Fallback OFF/ON, Hard‑down).
+The backend image runs `python scripts/migrate_db.py` before `uvicorn`. Pass
+`OPENAI_API_KEY` through your shell or a `.env` file next to the compose
+file. The dashboard is not containerised; run it with `npm run dev` or
+deploy it to Vercel.
 
-### Limitations (honest, up‑front)
+## Deployment
 
-- **Circuit breaker is process‑local.** In a multi‑worker deployment each worker has its own breaker state; state is **not** shared across workers. Use a distributed lock or a centralized store (e.g., Redis) if cross‑worker coordination is needed.
-- **Exact‑match cache only.** Cache keys are pattern‑based hash look‑ups; there is no fuzzy matching, prefix caching, or tiered cache (e.g., local‑memory + Redis).
-- **Mock‑provider eval vs real provider.** The evaluation harness uses a local mock server with injected latency/failure rates. Real‑world provider SLAs, token pricing, and latency distributions will differ.
-- **In‑memory state per worker.** Cache rules loaded from the DB are cached in Redis with a 10‑second TTL; rule writes invalidate the key eagerly, but any in‑process counters (e.g., request totals) reset on process restart.
-- **Redis fail‑open is intentional.** If Redis is unavailable, rate limiting allows requests through and cache lookups become misses – the system never blocks traffic.
+- Backend on Render: `render.yaml` describes the service; set the
+  `sync: false` variables in the Render dashboard. `scripts/migrate_db.py` runs as
+  the pre-deploy command. The ChromaDB directory is on local disk, so a
+  persistent disk (or a managed vector store) is needed for the knowledge
+  base to survive deploys.
+- Dashboard on Vercel: import `site/`, set `NEXT_PUBLIC_API_URL` to the
+  backend URL, and add the Vercel origin to `CORS_ORIGINS`.
 
-### Link to evaluation report
+## Known limitations
 
-- `docs/EVAL.md` – generated markdown with tables and per‑scenario numbers.
+- Circuit breaker, Prometheus counters, and guardrail rules are
+  process-local; multiple workers do not share them.
+- Prompt-injection and PII detection are heuristics (see Guardrails).
+- The grounding score is lexical and can under-score short numeric answers.
+- ChromaDB persists to local disk; there is no multi-node vector store.
+- Analytics are scoped per user; there is no cross-tenant isolation beyond
+  roles.
+- `answer_logs` stores the question and answer text (the dashboard shows
+  them); LLM prompts elsewhere are still never stored.
+- Cost figures (LLM, embedding, savings) are estimates from the pricing
+  tables in `app/config.py`, checked on `PRICING_EFFECTIVE_DATE`; they are not
+  provider billing. "Expired" cache entries are estimated as entries written
+  minus entries present. The semantic lookup scans up to 500 entries linearly;
+  a vector index would be needed well beyond that.
+- Stampede protection and the answer cache are per Redis instance; the
+  generation lock is best effort (a crashed generator blocks identical
+  questions for at most `ANSWERS_LOCK_TTL` seconds). Keyed web search and
+  page fetching reach the open web: results are ranked by trusted domain but
+  not fact-checked.
+- Background tasks run in-process; a crash can lose the last usage row.
 
-`.github/workflows/ci.yml` runs on every push/PR:
+## Future improvements
 
-- **backend**: Python 3.11, Redis service, `ruff check` (lint) + `pytest` (44 tests)
-- **frontend**: `npm ci` + `npm run build` (Vite)
-- **site**: `npm ci` + `npm run lint` + `npm run build` (Next.js)
-
-## Roadmap
-
-- Prometheus metrics + Grafana dashboards
-- OpenTelemetry tracing
-- Kubernetes autoscaling
-- Redis Cluster (no single point of failure)
-- AI-assisted cache-rule suggestions
-
-<div align="center">
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0EA5E9,100:0F172A&height=100&section=footer" width="100%"/>
-</div>
-# #   L i m i t a t i o n 
- 
- -   * * C i r c u i t   b r e a k e r   i s   p r o c e s s - l o c a l . * *   I n   a   m u l t i  w o r k e r   d e p l o y m e n t   e a c h   w o r k e r   h a s   i t s   o w n   b r e a k e r   s t a t e ;   s t a t e   i s   n o t   s h a r e d   a c r o s s   w o r k e r s .  
- 
+- Presidio-based PII detection, multi-language injection rules.
+- Refresh-token rotation on every refresh.
+- Alembic autogenerate checks in CI.
+- OpenTelemetry tracing and shared breaker state across workers.
+- Managed vector store option for multi-instance deployments.

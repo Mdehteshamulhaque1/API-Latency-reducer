@@ -64,28 +64,16 @@ export function setupPasswordToggles(root = document) {
         });
     }
 }
-export function formatCountdown(seconds) {
-    if (seconds <= 0)
-        return "expired";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    const mm = String(m).padStart(2, "0");
-    const ss = String(s).padStart(2, "0");
-    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-export function formatDate(exp) {
-    if (!exp)
-        return "unknown";
-    return new Date(exp * 1000).toLocaleString();
-}
 export function formatIsoDate(iso, opts) {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, opts);
+    if (Number.isNaN(d.getTime()))
+        return iso;
+    const wantsTime = Boolean(opts && ("timeStyle" in opts || "hour" in opts || "minute" in opts));
+    return wantsTime ? d.toLocaleString(undefined, opts) : d.toLocaleDateString(undefined, opts);
 }
 export function safeNext(value) {
     if (!value || !/^\/(?![/\\])/.test(value))
-        return "/account";
+        return "/chat";
     return value;
 }
 export function el(tag, className = "", text, children = []) {

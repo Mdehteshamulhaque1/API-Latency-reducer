@@ -18,13 +18,19 @@ services:
       - "8000:8000"
     environment:
       # SQLite data lives on a named volume so it survives container restarts.
+      # scripts/migrate_db.py (run by the image CMD) applies Alembic migrations first.
       DATABASE_URL: sqlite+aiosqlite:////data/api_optimizer.db
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-compose-demo-secret-key-change-me-0123456789}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-in-production}
-      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      CORS_ORIGINS: '["http://localhost:3000"]'
       LOG_LEVEL: INFO
+      # LLM gateway: pass your key through from the shell or a .env file.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gemini-2.5-flash}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
     volumes:
       - api_optimizer_data:/data
     depends_on:
@@ -37,18 +43,9 @@ services:
       retries: 5
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
-    container_name: api-optimizer-frontend
-    ports:
-      - "5173:5173"
-    environment:
-      # Vite proxies /api -> backend service; see frontend/vite.config.js
-      VITE_PROXY_TARGET: http://backend:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
+  # Dashboard (Next.js, in ./site). Run it locally with `npm run dev` on port
+  # 3000, or deploy it to Vercel with NEXT_PUBLIC_API_URL pointing at the
+  # backend. It is intentionally not containerised here to keep the stack small.
 
 volumes:
   api_optimizer_data:

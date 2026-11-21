@@ -1,23 +1,20 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Session · Esone{% endblock %}
+{% block title %}Your account · Esone{% endblock %}
 
 {% block body %}
 {% include "_navbar.html" %}
-<main class="page">
+<main class="page results-page">
   <div class="wash wash-soft" aria-hidden="true"><span class="wash-a"></span><span class="wash-b"></span></div>
-  <div class="container">
-    <div class="page-header">
+  <div class="container results-container">
+    {% include "_searchbar.html" %}
+    <div class="page-header page-header-compact">
       <div>
-        <p class="eyebrow">Session console</p>
-        <h1 class="display page-title">Your session</h1>
-        <p class="page-lead">Decoded from the tokens in this browser. Signature verification happens on the server, not here.</p>
+        <p class="eyebrow">Account</p>
+        <h1 class="display page-title">Your account</h1>
+        <p class="page-lead">Your profile and password.</p>
       </div>
       <div class="page-actions">
-        <button type="button" id="rotate-btn" class="btn btn-outline btn-sm">
-          <span class="btn-idle">{{ icon("refresh", "icon-xxs") }}Rotate tokens</span>
-          <span class="btn-pending"><span class="spinner"></span>Rotate tokens</span>
-        </button>
         <button type="button" class="btn btn-ghost btn-sm" data-action="logout">{{ icon("log-out", "icon-xxs") }}Sign out</button>
       </div>
     </div>
@@ -25,80 +22,38 @@
     <div id="console-notice" class="mb-6" hidden></div>
 
     <div id="console-skeleton" class="stats">
-      <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
     </div>
 
     <div id="console" class="stack fade-in" hidden>
       <div class="stats">
         <div class="stat" data-tone="ink">
           <span class="stat-bar" aria-hidden="true"></span>
-          <div class="stat-top"><p class="stat-label">User id</p><span class="stat-icon">{{ icon("fingerprint", "icon-xs") }}</span></div>
-          <p class="stat-value" id="stat-sub">—</p>
-          <p class="stat-hint">JWT sub claim</p>
-        </div>
-        <div class="stat" data-tone="brand">
-          <span class="stat-bar" aria-hidden="true"></span>
-          <div class="stat-top"><p class="stat-label">Role</p><span class="stat-icon">{{ icon("shield-check", "icon-xs") }}</span></div>
-          <p class="stat-value" id="stat-role">—</p>
-          <p class="stat-hint">Granted server-side</p>
-        </div>
-        <div class="stat" data-tone="brand" id="stat-access-card">
-          <span class="stat-bar" aria-hidden="true"></span>
-          <div class="stat-top"><p class="stat-label">Access expires in</p><span class="stat-icon">{{ icon("clock", "icon-xs") }}</span></div>
-          <p class="stat-value" id="stat-access">—</p>
-          <p class="stat-hint" id="stat-access-hint"></p>
+          <div class="stat-top"><p class="stat-label">Username</p><span class="stat-icon">{{ icon("user", "icon-xs") }}</span></div>
+          <p class="stat-value" id="stat-username">—</p>
+          <p class="stat-hint" id="stat-email"></p>
         </div>
         <div class="stat" data-tone="saffron">
           <span class="stat-bar" aria-hidden="true"></span>
-          <div class="stat-top"><p class="stat-label">Refresh expires in</p><span class="stat-icon">{{ icon("key", "icon-xs") }}</span></div>
-          <p class="stat-value" id="stat-refresh">—</p>
-          <p class="stat-hint" id="stat-refresh-hint"></p>
+          <div class="stat-top"><p class="stat-label">Member since</p><span class="stat-icon">{{ icon("clock", "icon-xs") }}</span></div>
+          <p class="stat-value" id="stat-since">—</p>
+          <p class="stat-hint">Account created</p>
         </div>
       </div>
 
-      <div class="grid-claims">
-        <div class="card">
-          <div class="card-header card-header-row">
-            <div>
-              <h3 class="card-title">Access token claims</h3>
-              <p class="card-desc">Payload decoded in the browser for display only.</p>
-            </div>
-            <span id="role-pill" class="pill" hidden></span>
-          </div>
-          <div class="card-content stack-sm">
-            <div id="claims" class="claims"></div>
-            <div class="tag-row">
-              <span class="badge badge-neutral">HS256</span>
-              <span class="badge badge-neutral" id="type-badge">type: unknown</span>
-              <span class="badge badge-live" id="active-badge">active</span>
-            </div>
-            <div id="expired-alert" class="alert alert-default" hidden>
-              {{ icon("clock", "icon-xs") }}
-              <div>This access token has expired. Your next API call will refresh it automatically, or press <span class="text-ink font-medium">Rotate tokens</span> now.</div>
-            </div>
-          </div>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Your usage</h3>
+          <p class="card-desc">Your own searches only. Instant answers come from questions asked before; the rest are freshly researched.</p>
         </div>
-
-        <div class="card">
-          <div class="card-header card-header-row">
-            <div>
-              <h3 class="card-title">Backend status</h3>
-              <p class="card-desc">Live from <span class="mono text-ink-2">/api/v1/health</span></p>
-            </div>
-            <button type="button" id="reload-health" class="btn btn-ghost btn-sm" aria-label="Reload health">{{ icon("refresh", "icon-xxs") }}</button>
-          </div>
-          <div class="card-content">
-            <div id="health-body"></div>
-            <p class="card-meta mono" id="health-meta"></p>
-          </div>
-        </div>
+        <div class="card-content"><ul class="rows" id="billing-rows"><li class="row"><span class="row-label">Loading…</span></li></ul></div>
       </div>
 
       <div class="grid-profile">
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Profile</h3>
-            <p class="card-desc">Live from <span class="mono text-ink-2">/api/v1/users/me</span></p>
+            <p class="card-desc">What Esone knows about you.</p>
           </div>
           <div class="card-content"><div id="profile-body"></div></div>
         </div>

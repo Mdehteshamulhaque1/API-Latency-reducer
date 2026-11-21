@@ -17,12 +17,31 @@ SQLAlchemy 2 async. SQLite locally, Supabase (Postgres) in production.
 | POST   | `/users/me/password`     | bearer      | Change password, revokes all refresh tokens   |
 | GET    | `/admin/users`           | admin       | List users (`limit`, `offset`)                |
 | PATCH  | `/admin/users/{id}`      | admin       | Change `role` and/or `is_active`              |
+| GET    | `/chat/status`           | bearer      | Whether an LLM gateway is configured          |
+| POST   | `/chat`                  | bearer      | Ask a question; answered by the API Optimizer |
 | GET    | `/health`                | none        | Database check and version                    |
+
+`POST /chat` is a proxy: Esone signs in to the API Optimizer with one
+service account (`ESONE_OPTIMIZER_URL`, `_USERNAME`, `_PASSWORD`) and forwards
+the question to its `POST /api/v1/answers` pipeline, which checks a semantic
+cache in Redis and, on a miss, crawls for the answer and stores it. The reply
+(answer, cache hit or crawled, similarity, sources, latency) is returned as
+is. Users and their sessions stay in Esone; the Optimizer only ever sees the
+service account.
+
+The same service account ships Esone's request telemetry: every request
+Esone serves and every call it makes (method, path, status, latency, sizes,
+correlation id; never bodies) is buffered by `esone_api/telemetry.py` and
+POSTed in batches to the Optimizer's `/api/v1/ingest/requests`, where the
+Optimizer dashboard analyses it. The account needs the operator or admin role
+there. `ESONE_TELEMETRY_ENABLED=false` turns it off; each response carries an
+`X-Correlation-ID` header that ties inbound and outbound rows together.
 
 Refresh tokens are stored by `jti`. A refresh token that is presented again
 after it has been rotated is treated as stolen and every session for that user
-is revoked. Login and register are limited to 10 attempts per IP per minute
-(`ESONE_AUTH_RATE_LIMIT_PER_MINUTE`).
+is revoked. Login and register are limited to 5 attempts per IP per minute
+(`ESONE_AUTH_RATE_LIMIT_PER_MINUTE`); a 429 carries `Retry-After`,
+`RateLimit-Limit` and `RateLimit-Policy`.
 
 ## Run locally
 

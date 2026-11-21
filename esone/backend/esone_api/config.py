@@ -73,12 +73,36 @@ class Settings(BaseSettings):
     # Behind Render's load balancer the real client IP arrives in X-Forwarded-For.
     trust_proxy: bool = True
     # Login/register attempts per IP per minute. 0 disables the limiter.
-    auth_rate_limit_per_minute: int = 10
+    # Login and register attempts per client IP per sliding minute (OWASP-style
+    # brute-force protection; 0 disables).
+    auth_rate_limit_per_minute: int = 5
 
     # Optional first administrator, created on startup if the username is free.
     admin_username: str | None = None
     admin_email: str | None = None
     admin_password: str | None = None
+
+    # API Optimizer (LLM gateway) used by POST /api/v1/chat. Esone signs in
+    # there with this service account; users never see these values.
+    optimizer_url: str | None = None
+    optimizer_username: str | None = None
+    optimizer_password: str | None = None
+    optimizer_timeout_seconds: float = 60.0
+
+    # Request telemetry: every request Esone serves and every call it makes
+    # is shipped in batches to the Optimizer's POST /api/v1/ingest/requests
+    # (same service account), where the Optimizer dashboard analyses it.
+    # Needs the Optimizer settings above; the service account must have the
+    # operator or admin role there.
+    telemetry_enabled: bool = True
+    telemetry_service_name: str = "esone"
+    telemetry_flush_seconds: float = 30.0
+
+    @field_validator("optimizer_url")
+    @classmethod
+    def _clean_optimizer_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip().rstrip("/")
+        return value or None
 
     @field_validator("database_url")
     @classmethod

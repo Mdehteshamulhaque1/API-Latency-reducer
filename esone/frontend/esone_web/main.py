@@ -11,6 +11,7 @@ import hashlib
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -39,6 +40,18 @@ def static_version() -> str:
 
 
 ASSET_VERSION = static_version()
+
+
+def api_origin(api_url: str) -> str:
+    """Scheme, host and port of the API URL, for the CSP connect-src.
+
+    The API may live under a path (the API Optimizer proxy,
+    http://host/proxy/esone). A CSP source that carries a path matches only
+    that exact path, so the origin alone is allowed and every call under it
+    passes.
+    """
+    parts = urlsplit(api_url)
+    return f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else api_url
 
 
 def normalise_api_url(value: str) -> str:
@@ -91,7 +104,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self' https://fonts.googleapis.com",
                 "font-src https://fonts.gstatic.com",
                 "img-src 'self' data:",
-                f"connect-src 'self' {api_url}",
+                f"connect-src 'self' {api_origin(api_url)}",
                 "frame-ancestors 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
@@ -113,6 +126,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "index": ("/", "index.html"),
     "login": ("/login", "login.html"),
     "register": ("/register", "register.html"),
+    "chat": ("/chat", "chat.html"),
     "account": ("/account", "account.html"),
     "admin": ("/admin", "admin.html"),
 }

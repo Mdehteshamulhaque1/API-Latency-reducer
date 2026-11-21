@@ -19,6 +19,9 @@ from app.database.db import async_session_maker
 
 logger = logging.getLogger(__name__)
 
+# Requests under this prefix are forwarded to a monitored service (app/api/v1/proxy.py).
+PROXY_PREFIX = "/proxy/"
+
 
 class CacheMiddleware(BaseHTTPMiddleware):
     """
@@ -46,7 +49,7 @@ class CacheMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         cache_rule = await self._find_cache_rule(request.url.path)
-        if cache_rule is None or not cache_rule.enabled:
+        if cache_rule is None or not cache_rule.enabled or not self._safe_for_proxy(cache_rule, request):
             request.state.cache_hit = False
             request.state.cache_key = None
             return await call_next(request)
@@ -146,11 +149,29 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
     async def _find_cache_rule(self, path: str) -> Optional[CacheRule]:
         rules = await self._get_enabled_rules()
+        proxied = path.startswith(PROXY_PREFIX)
 
         for rule in sorted(rules, key=lambda item: item.priority, reverse=True):
-            if rule.endpoint_pattern and self._pattern_matches(rule.endpoint_pattern, path):
+            if not rule.endpoint_pattern:
+                continue
+            # Proxied paths embed the upstream's paths, so only rules written
+            # for the proxy prefix may apply to them (and never to gateway paths).
+            if proxied != rule.endpoint_pattern.startswith(PROXY_PREFIX):
+                continue
+            if self._pattern_matches(rule.endpoint_pattern, path):
                 return rule
         return None
+
+    @staticmethod
+    def _safe_for_proxy(rule: CacheRule, request: Request) -> bool:
+        """A proxied request that carries credentials is cached only when the
+        rule keys on headers: the gateway knows no user for it, so a plain key
+        would hand one caller's private response to the next."""
+        if not request.url.path.startswith(PROXY_PREFIX):
+            return True
+        if request.headers.get("authorization") or request.headers.get("cookie"):
+            return bool(rule.cache_by_headers)
+        return True
 
     def _build_cache_key(self, rule: CacheRule, request: Request) -> str:
         cache_service = CacheService(redis_client)
@@ -199,6 +220,17 @@ class CacheMiddleware(BaseHTTPMiddleware):
         body_bytes: bytes,
     ) -> None:
         if response.status_code != 200:
+            return
+
+        # Respect the rule's size budget (max_cache_size is in KB). Huge
+        # bodies would crowd out small, hot entries and slow every lookup.
+        size_limit_bytes = int(rule.max_cache_size or 0) * 1024
+        if size_limit_bytes and len(body_bytes) > size_limit_bytes:
+            response.headers["X-Cache-Skipped"] = "too-large"
+            logger.info(
+                "Skipping cache store for %s: body %s bytes exceeds rule limit %s bytes",
+                cache_key, len(body_bytes), size_limit_bytes,
+            )
             return
 
         try:

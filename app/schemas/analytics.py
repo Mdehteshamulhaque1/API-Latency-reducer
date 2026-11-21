@@ -7,38 +7,6 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class APILogResponse(BaseModel):
-    """Schema for API log response."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: Optional[int]
-    method: str
-    endpoint: str
-    status_code: int
-    response_time_ms: float
-    cache_hit: bool
-    client_ip: str
-    correlation_id: str
-    created_at: datetime
-
-
-class AnalyticsResponse(BaseModel):
-    """Schema for analytics data."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    total_requests: int
-    total_errors: int
-    cache_hits: int
-    cache_misses: int
-    avg_response_time_ms: float
-    cache_hit_rate: float
-    created_at: datetime
-
-
 class RecentRequest(BaseModel):
     """Snapshot of a recent API request."""
 
@@ -50,6 +18,25 @@ class RecentRequest(BaseModel):
     response_time_ms: float
     cache_hit: bool
     created_at: datetime
+    service: str = "api-optimizer"
+    direction: str = "inbound"
+    upstream_host: Optional[str] = None
+
+
+class MonitoredService(BaseModel):
+    """One application whose requests are in ``api_logs`` for the window."""
+
+    service: str
+    is_self: bool
+    requests: int
+    inbound: int
+    outbound: int
+    errors: int
+    avg_response_time_ms: float
+    last_seen: Optional[datetime] = None
+    # Gateway user account the service ships its rows with; its LLM calls
+    # and guardrail events are attributed to this account.
+    account_user_id: Optional[int] = None
 
 
 class LatencyPoint(BaseModel):
@@ -61,15 +48,11 @@ class LatencyPoint(BaseModel):
     error_count: int
 
 
-class LatencyDistributionPoint(BaseModel):
-    """Latency distribution metrics for a time bucket."""
+class LatencyDistributionPoint(LatencyPoint):
+    """Latency percentiles for a time bucket."""
 
-    timestamp: str
-    avg_response_time_ms: float
     p95_response_time_ms: float
     p99_response_time_ms: float
-    request_count: int
-    error_count: int
 
 
 class SlowEndpointRankingItem(BaseModel):
@@ -107,24 +90,28 @@ class BenchmarkReport(BaseModel):
 
 
 class AnalyticsSummary(BaseModel):
-    """Schema for analytics summary."""
+    """Everything the dashboard needs for one window. All values are measured
+    from request rows; ``total_errors`` counts status >= 400 (including 429),
+    ``rate_limited_requests`` counts status == 429 only."""
 
     total_requests: int
     total_errors: int
+    rate_limited_requests: int = 0
     cache_hit_rate: float
+    cache_miss_rate: float = 0.0
     avg_response_time_ms: float
     slowest_endpoint: Optional[str]
     slowest_response_time_ms: Optional[float]
     top_endpoints: List[dict]
     error_rate: float
     request_rate_per_minute: float = 0.0
-    cache_miss_rate: float = 0.0
     recent_requests: List[RecentRequest] = Field(default_factory=list)
     latency_series: List[LatencyPoint] = Field(default_factory=list)
+    latency_distribution: List[LatencyDistributionPoint] = Field(default_factory=list)
     slow_endpoint_ranking: List[SlowEndpointRankingItem] = Field(default_factory=list)
+    overall_p50_response_time_ms: float = 0.0
     overall_p95_response_time_ms: float = 0.0
     overall_p99_response_time_ms: float = 0.0
-    latency_distribution: List[LatencyDistributionPoint] = Field(default_factory=list)
     slow_endpoints: List[dict] = Field(default_factory=list)
     optimization_suggestions: List[OptimizationSuggestion] = Field(default_factory=list)
     benchmark: Optional[BenchmarkReport] = None

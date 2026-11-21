@@ -45,7 +45,7 @@ def test_page_scripts_exist_for_each_interactive_page(client):
 
 def test_compiled_js_is_committed():
     """TypeScript output is committed so the Render Python service needs no Node at build time."""
-    for name in ("site", "api", "dom", "login", "register", "account", "admin"):
+    for name in ("site", "api", "dom", "home", "searchbar", "login", "register", "chat", "account", "admin"):
         assert (STATIC_DIR / "js" / f"{name}.js").is_file(), f"run `npm run build` to produce {name}.js"
 
 

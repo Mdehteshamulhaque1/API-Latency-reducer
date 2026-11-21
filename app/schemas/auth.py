@@ -39,7 +39,6 @@ class UserResponse(UserBase):
 
     id: int
     is_active: bool
-    api_quota: int
 
 
 class TokenResponse(BaseModel):
@@ -53,3 +52,13 @@ class TokenResponse(BaseModel):
 class TokenRefresh(BaseModel):
     """Schema for refresh token request."""
     refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    """Schema for logout: the refresh token to revoke."""
+    refresh_token: str
+
+
+class MessageResponse(BaseModel):
+    """Generic confirmation message."""
+    message: str

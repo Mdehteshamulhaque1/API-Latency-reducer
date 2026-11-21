@@ -1,133 +1,109 @@
 "use client"
 
-import { motion, type Variants } from "framer-motion"
-import { ArrowDown } from "lucide-react"
+import Link from "next/link"
+import { motion, useReducedMotion } from "framer-motion"
 
-import { Aurora, GridBackdrop } from "@/components/backgrounds"
-import { LivePanel } from "@/components/live-panel"
 import { Button } from "@/components/ui/button"
-import { EASE } from "@/components/motion/reveal"
 
-const container: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.09, delayChildren: 0.15 } },
-}
+/* Measured on 20 Nov 2026: three questions through POST /api/v1/answers on a
+ * local stack, each asked twice. Medians of the fresh answer (Gemini) and the
+ * repeat served from the shared answer cache. */
+const UPSTREAM_MS = 9695
+const CACHED_MS = 959
 
-const word: Variants = {
-  hidden: { opacity: 0, y: 34, filter: "blur(6px)" },
-  visible: {
-    opacity: 1,
-    y: 0,
-    filter: "blur(0px)",
-    transition: { duration: 0.75, ease: EASE },
-  },
-}
+export function Hero() {
+  const reduce = useReducedMotion()
+  const cachedShare = CACHED_MS / UPSTREAM_MS
 
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.7, ease: EASE },
-  },
-}
-
-/** One headline phrase: mixed weight (heavy/light) with optional accent gradient. */
-function Phrase({
-  heavy,
-  light,
-  accent = false,
-}: {
-  heavy: string
-  light: string
-  accent?: boolean
-}) {
   return (
-    <span className="inline-block">
-      <motion.span
-        variants={word}
-        className="mr-[0.18em] inline-block font-extrabold tracking-[-0.04em] text-zinc-50"
-      >
-        {heavy}
-      </motion.span>
-      <motion.span
-        variants={word}
-        className={`inline-block font-medium tracking-[-0.04em] ${accent ? "text-gradient" : "text-zinc-400"}`}
-      >
-        {light}
-      </motion.span>
-    </span>
+    <section className="border-b border-rule bg-paper">
+      <div className="container grid gap-12 py-16 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16 lg:py-24">
+        <div>
+          <p className="mono-label">Admin console</p>
+          <h1 className="mt-3 max-w-[16ch] text-[clamp(2.3rem,5.4vw,4rem)] font-semibold leading-[1.04] tracking-[-0.025em] text-ink">
+            Run the API Optimizer gateway from one place.
+          </h1>
+          <p className="mt-6 max-w-[54ch] text-[17px] leading-relaxed text-graphite">
+            Watch traffic and latency, decide what gets cached, set rate limits, follow AI usage and each
+            user&apos;s charges, and review guardrail events, for the gateway and for the services it monitors.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Button asChild variant="primary" size="lg">
+              <Link href="/login">Sign in to the console</Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/status">Check system status</Link>
+            </Button>
+          </div>
+          <p className="mt-6 text-[13px] text-faint">
+            For administrators, operators and viewers of this deployment. Access is by account; see{" "}
+            <a href="#access" className="underline underline-offset-4 hover:text-ink">
+              who can do what
+            </a>
+            .
+          </p>
+        </div>
+
+        {/* The one moving thing on the page: the cached bar settles once. */}
+        <figure className="housing" aria-label="Latency comparison for one endpoint">
+          <div className="px-5 py-4">
+            <p className="text-sm font-medium text-ink">What the shared answer cache saves</p>
+            <p className="text-[12px] text-graphite">Median of three questions, measured 20 Nov 2026</p>
+          </div>
+
+          <div className="space-y-5 px-5 py-5">
+            <LatencyBar label="Fresh answer from the model" ms={UPSTREAM_MS} share={1} color="bg-signal" reduce={reduce} delay={0} />
+            <LatencyBar
+              label="Asked again, shared cache hit"
+              ms={CACHED_MS}
+              share={cachedShare}
+              color="bg-relay"
+              reduce={reduce}
+              delay={0.35}
+            />
+          </div>
+
+          <figcaption className="flex items-center justify-between px-5 py-3 text-[12px] text-graphite">
+            <span>Scale shared, 0 to {UPSTREAM_MS.toLocaleString("en-US")} ms</span>
+            <span className="font-mono">
+              {Math.round((1 - cachedShare) * 100)}% less time
+            </span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
   )
 }
 
-export function Hero() {
+function LatencyBar({
+  label,
+  ms,
+  share,
+  color,
+  reduce,
+  delay,
+}: {
+  label: string
+  ms: number
+  share: number
+  color: string
+  reduce: boolean | null
+  delay: number
+}) {
   return (
-    <section id="top" className="relative overflow-hidden pb-24 pt-36 sm:pt-44">
-      <Aurora />
-      <GridBackdrop className="opacity-60" />
-
-      <div className="container relative">
-        <div className="grid items-center gap-16 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
-          {/* left — copy */}
-          <motion.div
-            variants={container}
-            initial="hidden"
-            animate="visible"
-            className="text-center lg:text-left"
-          >
-            <motion.div variants={fadeUp} className="flex justify-center lg:justify-start">
-              <span className="sticker gap-2.5 bg-surface">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                </span>
-                [live] · 99.9% uptime
-              </span>
-            </motion.div>
-
-            <motion.h1 className="mt-6 text-[clamp(2.8rem,7vw,6rem)] font-medium leading-[0.95] tracking-[-0.03em] text-zinc-50">
-              <Phrase heavy="Cut" light="latency. " accent />
-              <Phrase heavy="Ship" light="faster." accent />
-            </motion.h1>
-
-            <motion.p
-              variants={fadeUp}
-              className="mx-auto mt-6 max-w-md text-pretty text-[15px] leading-relaxed text-dim lg:mx-0"
-            >
-              A drop-in FastAPI gateway that caches, throttles, and monitors every
-              request — so your users feel nothing but speed.
-            </motion.p>
-
-            <motion.div
-              variants={fadeUp}
-              className="mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
-            >
-              <Button asChild variant="outline" size="lg">
-                <a href="#how">
-                  See how it works
-                  <ArrowDown className="h-4 w-4" />
-                </a>
-              </Button>
-            </motion.div>
-
-            <motion.div
-              variants={fadeUp}
-              className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-[10px] uppercase tracking-[0.14em] text-faint lg:justify-start"
-            >
-              <span>no infra changes</span>
-              <span className="text-zinc-600">/</span>
-              <span>redis-backed</span>
-              <span className="text-zinc-600">/</span>
-              <span>prometheus-ready</span>
-            </motion.div>
-          </motion.div>
-
-          {/* right — live metrics panel */}
-          <div className="mx-auto w-full max-w-md lg:max-w-none">
-            <LivePanel />
-          </div>
-        </div>
+    <div>
+      <div className="mb-2 flex items-baseline justify-between gap-4">
+        <span className="text-sm text-ink">{label}</span>
+        <span className="font-mono text-sm text-ink">{ms.toLocaleString("en-US")} ms</span>
       </div>
-    </section>
+      <div className="h-6 w-full border border-rule bg-frost">
+        <motion.div
+          className={`h-full ${color}`}
+          initial={reduce ? { width: `${share * 100}%` } : { width: "100%" }}
+          animate={{ width: `${share * 100}%` }}
+          transition={{ duration: 1.1, delay, ease: [0.16, 1, 0.3, 1] }}
+        />
+      </div>
+    </div>
   )
 }

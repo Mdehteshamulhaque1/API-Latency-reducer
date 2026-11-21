@@ -12,6 +12,7 @@ venv/
 *.db
 *.db-shm
 *.db-wal
+*.db.bak*
 *.sqlite3
 
 # Node
@@ -34,3 +35,9 @@ Thumbs.db
 
 # IDE
 .idea/
+
+# Local vector store (ChromaDB) and uploads
+data/
+
+# scripts/dev.sh runtime files (pids, logs)
+.dev/

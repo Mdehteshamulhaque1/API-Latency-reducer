@@ -43,7 +43,7 @@ async function readErrorMessage(res) {
     return `Request failed (${res.status})`;
 }
 async function request(path, init = {}) {
-    const url = new URL(path, API_BASE_URL);
+    const url = new URL(`${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`);
     const headers = {
         "Content-Type": "application/json",
         ...(init.headers ?? {}),
@@ -185,13 +185,6 @@ export function authGetClaims() {
     const payload = decodeTokenPayload(token);
     return payload ? toClaims(payload) : null;
 }
-export function authGetRefreshClaims() {
-    const token = localStorage.getItem("refresh_token");
-    if (!token)
-        return null;
-    const payload = decodeTokenPayload(token);
-    return payload ? toClaims(payload) : null;
-}
 export function authGetRole() {
     const token = authGetAccessToken();
     if (!token)
@@ -229,9 +222,19 @@ export async function apiAdminUpdateUser(id, patch) {
     const res = await authed(`/api/v1/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
     return res.json();
 }
-export async function apiHealth() {
-    const res = await request("/api/v1/health", { method: "GET" });
-    if (!res.ok)
-        throw new ApiError(await readErrorMessage(res), res.status);
+export async function apiAsk(question) {
+    const res = await authed("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) });
+    return res.json();
+}
+export async function apiChatStats(hours = 24 * 30) {
+    const res = await authed(`/api/v1/chat/stats?hours=${hours}`, { method: "GET" });
+    return res.json();
+}
+export async function apiChatHistory(limit = 50) {
+    const res = await authed(`/api/v1/chat/history?limit=${limit}`, { method: "GET" });
+    return res.json();
+}
+export async function apiChatHistoryClear() {
+    const res = await authed("/api/v1/chat/history", { method: "DELETE" });
     return res.json();
 }

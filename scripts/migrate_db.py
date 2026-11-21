@@ -1,103 +1,76 @@
 #!/usr/bin/env python3
 """
-Direct database migration script - creates tables without Alembic.
-Run with: python migrate_db.py
+Apply database migrations and seed the initial admin user.
+
+Run from the repository root:  python scripts/migrate_db.py
+
+1. ``alembic upgrade head`` brings the schema to the latest revision. Safe
+   on a fresh database and on one created earlier by create_all.
+2. If no user exists with ADMIN_EMAIL, an admin account is created with
+   ADMIN_PASSWORD. Existing passwords are never overwritten, because this
+   script runs on every deploy.
 """
 import asyncio
 import os
 import sys
-import bcrypt
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-# Add app to path (works on Windows and POSIX)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
-from app.database.base import Base
-from app.database.db import engine, async_session_maker
-from app.models import User
-from app.core.constants import UserRole
-from app.config import settings
-
-# Import AsyncSessionLocal for seeding
-AsyncSessionLocal = async_session_maker
-
-# Admin credentials from environment (fall back to safe defaults)
-ADMIN_EMAIL = settings.admin_email or "admin@example.com"
-ADMIN_PASSWORD = settings.admin_password or "change-me-in-production"
+from app.config import settings  # noqa: E402
+from app.core.constants import UserRole  # noqa: E402
+from app.core.security import PasswordHandler  # noqa: E402
+from app.database.db import async_session_maker, close_db  # noqa: E402
+from app.models import User  # noqa: E402
 
 
-def _hash_password(password: str) -> str:
-    """Hash a password with bcrypt (passlib is incompatible with bcrypt 5.x)."""
-    return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
+def run_migrations() -> None:
+    config = Config(os.path.join(ROOT, "alembic.ini"))
+    config.set_main_option("script_location", os.path.join(ROOT, "alembic"))
+    command.upgrade(config, "head")
 
-async def migrate_db():
-    """Create all tables and seed initial data."""
+
+async def seed_admin() -> None:
+    """Create the admin user once; never reset an existing password."""
     try:
-        print("🔄 Starting database migration...")
-        
-        # Create tables
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        print("✅ All tables created successfully")
-        
-        # Seed default admin user
-        async with AsyncSessionLocal() as session:
-            try:
-                # Check if admin exists
-                from sqlalchemy import text
-                result = await session.execute(
-                    text("SELECT id FROM users WHERE email = :email"),
-                    {"email": ADMIN_EMAIL}
+        async with async_session_maker() as session:
+            existing = await session.execute(select(User).where(User.email == settings.admin_email))
+            if existing.scalar_one_or_none() is not None:
+                print(f"Admin user already exists ({settings.admin_email}); password left unchanged")
+                return
+            session.add(
+                User(
+                    username="admin",
+                    email=settings.admin_email,
+                    hashed_password=PasswordHandler.hash_password(settings.admin_password),
+                    role=UserRole.ADMIN,
+                    is_active=True,
                 )
-                existing_admin = result.fetchone()
-                
-                if not existing_admin:
-                    print("📝 Creating default admin user...")
-                    admin_user = User(
-                        username="admin",
-                        email=ADMIN_EMAIL,
-                        hashed_password=_hash_password(ADMIN_PASSWORD),
-                        role=UserRole.ADMIN,
-                        is_active=True,
-                        is_superuser=True,
-                        api_quota=100000
-                    )
-                    session.add(admin_user)
-                    await session.commit()
-                    print(f"✅ Admin user created: {ADMIN_EMAIL} (password from .env)")
-                else:
-                    # Never overwrite an existing password: migrate_db.py runs
-                    # on every deploy and resetting the admin password would
-                    # silently invalidate the current one. Reset it manually
-                    # if you need to.
-                    print(f"ℹ️  Admin user already exists ({ADMIN_EMAIL}); password left unchanged")
-            except Exception as seed_error:
-                print(f"⚠️  Warning: Could not seed admin user: {seed_error}")
-                print("   (Tables were created successfully, you can create users manually via API)")
-        
-        print("\n✅ Database migration completed successfully!")
-        print("\n📊 Created tables:")
-        print("  - users")
-        print("  - cache_rules")
-        print("  - api_logs")
-        print("  - rate_limit_counters")
-        print("  - analytics")
-        
-    except SQLAlchemyError as e:
-        print(f"❌ Database error: {e}")
-        print("\nTroubleshooting:")
-        print("  1. Verify MySQL is running: mysql -u root -p")
-        print("  2. Create database: CREATE DATABASE api_optimizer;")
-        print("  3. Update .env with correct credentials")
-        return False
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-    
-    return True
+            )
+            await session.commit()
+            print(f"Admin user created: {settings.admin_email} (password from ADMIN_PASSWORD)")
+    finally:
+        await close_db()
+
+
+def main() -> int:
+    try:
+        print("Applying migrations (alembic upgrade head)...")
+        run_migrations()
+        print("Schema is up to date")
+        asyncio.run(seed_admin())
+        print("Database setup complete")
+        return 0
+    except SQLAlchemyError as exc:
+        print(f"Database error: {exc}")
+        print("Check DATABASE_URL in .env and that the database server is reachable.")
+        return 1
+
 
 if __name__ == "__main__":
-    result = asyncio.run(migrate_db())
-    sys.exit(0 if result else 1)
+    sys.exit(main())

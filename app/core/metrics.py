@@ -1,175 +1,136 @@
 """
-Prometheus metrics for the LLM Gateway.
+Prometheus metrics for the LLM gateway, exposed at GET /metrics.
 
-Exposes GET /metrics with a single registry containing:
-- chat_requests_total{served_model,cache_type,status}
-- chat_provider_latency_seconds{served_model} histogram
-- chat_request_latency_seconds{served_model} histogram
-- chat_prompt_tokens_total{served_model}
-- chat_completion_tokens_total{served_model}
-- chat_estimated_cost_usd_total
-- chat_fallback_total{status}
-- chat_circuit_breaker_state{state}
+Every value here is recorded by ``ChatService`` at the moment it happens:
+a cache hit, a successful provider call, a fallback, or a failure. Nothing
+is estimated or emitted per HTTP request, so a counter only moves when a
+real chat completion moved it.
+
+Metric names and labels
+-----------------------
+chat_requests_total{served_model, cache_type, status}
+    cache_type: "hit" | "miss"      status: "success" | "error"
+chat_provider_latency_seconds{served_model}
+    Time spent waiting on the provider, excluding cache work.
+chat_request_latency_seconds{served_model}
+    End-to-end gateway latency, including cache lookups and fallback.
+chat_prompt_tokens_total{served_model} / chat_completion_tokens_total{served_model}
+    Token counts exactly as reported by the provider.
+chat_estimated_cost_usd_total{served_model}
+    Estimated spend from PRICING_TABLE; an estimate, not a bill.
+chat_fallback_total{status}
+    status: "success" when the fallback model answered, "error" when it failed too.
+chat_circuit_breaker_state{model}
+    0 = closed, 1 = open, 2 = half-open.
 """
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram, Gauge, REGISTRY
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 
-# ---------------------------------------------------------------------------
-# Global registry – single registry shared across the process.
-# ---------------------------------------------------------------------------
 _registry = REGISTRY
 
-# ---------------------------------------------------------------------------
-# chat_requests_total – total number of chat completion requests by model,
-# cache type and status (miss/hit/fallback/error).
-# ---------------------------------------------------------------------------
+_LATENCY_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30)
+
 chat_requests_total = Counter(
     "chat_requests_total",
-    "Total number of chat completion requests.",
+    "Chat completion requests handled by the gateway.",
     ["served_model", "cache_type", "status"],
     registry=_registry,
 )
 
-# ---------------------------------------------------------------------------
-# chat_provider_latency_seconds – latency (in seconds) of the provider call,
-# per served model. Histogram with explicit buckets.
-# ---------------------------------------------------------------------------
 chat_provider_latency_seconds = Histogram(
     "chat_provider_latency_seconds",
-    "Latency of the provider call in seconds.",
+    "Latency of the upstream provider call in seconds.",
     ["served_model"],
     registry=_registry,
-    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
+    buckets=_LATENCY_BUCKETS,
 )
 
-# ---------------------------------------------------------------------------
-# chat_request_latency_seconds – total request latency (including cache,
-# provider, fallback) in seconds per served model.
-# ---------------------------------------------------------------------------
 chat_request_latency_seconds = Histogram(
     "chat_request_latency_seconds",
-    "Total request latency in seconds.",
+    "End-to-end gateway latency in seconds.",
     ["served_model"],
     registry=_registry,
-    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
+    buckets=_LATENCY_BUCKETS,
 )
 
-# ---------------------------------------------------------------------------
-# chat_prompt_tokens_total – total prompt tokens served per model.
-# ---------------------------------------------------------------------------
 chat_prompt_tokens_total = Counter(
     "chat_prompt_tokens_total",
-    "Total prompt tokens served.",
+    "Prompt tokens reported by the provider.",
     ["served_model"],
     registry=_registry,
 )
 
-# ---------------------------------------------------------------------------
-# chat_completion_tokens_total – total completion tokens served per model.
-# ---------------------------------------------------------------------------
 chat_completion_tokens_total = Counter(
     "chat_completion_tokens_total",
-    "Total completion tokens served.",
+    "Completion tokens reported by the provider.",
     ["served_model"],
     registry=_registry,
 )
 
-# ---------------------------------------------------------------------------
-# chat_estimated_cost_usd_total – total estimated cost in USD.
-# ---------------------------------------------------------------------------
 chat_estimated_cost_usd_total = Counter(
     "chat_estimated_cost_usd_total",
-    "Total estimated cost in USD.",
+    "Estimated spend in USD based on the configured pricing table.",
+    ["served_model"],
     registry=_registry,
 )
 
-# ---------------------------------------------------------------------------
-# chat_fallback_total – number of fallback attempts by status.
-# ---------------------------------------------------------------------------
 chat_fallback_total = Counter(
     "chat_fallback_total",
-    "Number of fallback attempts.",
+    "Fallback model attempts by outcome.",
     ["status"],
     registry=_registry,
 )
 
-# ---------------------------------------------------------------------------
-# chat_circuit_breaker_state – current circuit breaker state per model.
-# ---------------------------------------------------------------------------
 chat_circuit_breaker_state = Gauge(
     "chat_circuit_breaker_state",
-    "Current circuit breaker state (0=CLOSED, 1=OPEN, 2=HALF_OPEN).",
-    ["state"],
+    "Circuit breaker state per primary model (0=closed, 1=open, 2=half_open).",
+    ["model"],
     registry=_registry,
 )
 
-
-# ---------------------------------------------------------------------------
-# Helper: increment chat_requests_total
-# ---------------------------------------------------------------------------
-def inc_requests(served_model: str, cache_type: str, status: str) -> None:
-    chat_requests_total.labels(served_model=served_model, cache_type=cache_type, status=status).inc()
+_BREAKER_STATE_VALUES = {"closed": 0, "open": 1, "half_open": 2}
 
 
-# ---------------------------------------------------------------------------
-# Helper: observe provider latency
-# ---------------------------------------------------------------------------
-def observe_provider_latency(served_model: str, latency_seconds: float) -> None:
-    chat_provider_latency_seconds.labels(served_model=served_model).observe(latency_seconds)
-
-
-# ---------------------------------------------------------------------------
-# Helper: observe total request latency
-# ---------------------------------------------------------------------------
-def observe_request_latency(served_model: str, latency_seconds: float) -> None:
+def record_cache_hit(served_model: str, latency_seconds: float) -> None:
+    """A response was served from the exact-match cache."""
+    chat_requests_total.labels(served_model=served_model, cache_type="hit", status="success").inc()
     chat_request_latency_seconds.labels(served_model=served_model).observe(latency_seconds)
 
 
-# ---------------------------------------------------------------------------
-# Helper: increment prompt tokens
-# ---------------------------------------------------------------------------
-def inc_prompt_tokens(served_model: str, count: int) -> None:
-    chat_prompt_tokens_total.labels(served_model=served_model).inc(count)
+def record_success(
+    served_model: str,
+    *,
+    latency_seconds: float,
+    prompt_tokens: int,
+    completion_tokens: int,
+    estimated_cost_usd: float,
+    fallback_used: bool,
+) -> None:
+    """A provider call succeeded (primary or fallback)."""
+    chat_requests_total.labels(served_model=served_model, cache_type="miss", status="success").inc()
+    chat_request_latency_seconds.labels(served_model=served_model).observe(latency_seconds)
+    chat_prompt_tokens_total.labels(served_model=served_model).inc(max(prompt_tokens, 0))
+    chat_completion_tokens_total.labels(served_model=served_model).inc(max(completion_tokens, 0))
+    chat_estimated_cost_usd_total.labels(served_model=served_model).inc(max(estimated_cost_usd, 0.0))
+    if fallback_used:
+        chat_fallback_total.labels(status="success").inc()
 
 
-# ---------------------------------------------------------------------------
-# Helper: increment completion tokens
-# ---------------------------------------------------------------------------
-def inc_completion_tokens(served_model: str, count: int) -> None:
-    chat_completion_tokens_total.labels(served_model=served_model).inc(count)
+def record_failure(model: str, *, latency_seconds: float, fallback_attempted: bool) -> None:
+    """Every configured model path failed for this request."""
+    chat_requests_total.labels(served_model=model, cache_type="miss", status="error").inc()
+    chat_request_latency_seconds.labels(served_model=model).observe(latency_seconds)
+    if fallback_attempted:
+        chat_fallback_total.labels(status="error").inc()
 
 
-# ---------------------------------------------------------------------------
-# Helper: increment estimated cost
-# ---------------------------------------------------------------------------
-def inc_estimated_cost_usd(total_cost: float) -> None:
-    chat_estimated_cost_usd_total.inc(total_cost)
+def observe_provider_latency(served_model: str, latency_seconds: float) -> None:
+    """Time spent inside one upstream call, including its retries."""
+    chat_provider_latency_seconds.labels(served_model=served_model).observe(latency_seconds)
 
 
-# ---------------------------------------------------------------------------
-# Helper: increment fallback counter
-# ---------------------------------------------------------------------------
-def inc_fallback(status: str = "success") -> None:
-    chat_fallback_total.labels(status=status).inc()
-
-
-# ---------------------------------------------------------------------------
-# Helper: set circuit breaker state gauge
-# ---------------------------------------------------------------------------
-def set_circuit_breaker_state(state: str, model: str | None = None) -> None:
-    """Set the circuit breaker state gauge.
-
-    state: "CLOSED", "OPEN", or "HALF_OPEN"
-    """
-    # Map state string to numeric value for the gauge
-    state_map = {"CLOSED": "0", "OPEN": "1", "HALF_OPEN": "2"}
-    numeric = state_map.get(state, "0")
-    # If a model is specified, we currently just set the global state gauge;
-    # per-model gauges would require additional labelling.
-    chat_circuit_breaker_state.labels(state=numeric).set(1 if model is None else 0)
-    # When a model is provided, we still set the gauge to 1 for that state;
-    # the model information is conveyed via the metric description, not labels.
-    if model is not None:
-        chat_circuit_breaker_state.labels(state=numeric).set(1)
+def set_circuit_breaker_state(model: str, state: str) -> None:
+    """Mirror the in-process breaker state for ``model`` ("closed"/"open"/"half_open")."""
+    chat_circuit_breaker_state.labels(model=model).set(_BREAKER_STATE_VALUES.get(state, 0))

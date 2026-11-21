@@ -4,15 +4,18 @@
 # (they are marked `sync: false` so secrets are never stored in git).
 #
 # Required:
-#   DATABASE_URL     e.g. mysql+aiomysql://USER:PASS@HOST:3306/api_optimizer
+#   DATABASE_URL     e.g. postgresql+asyncpg://USER:PASS@HOST:5432/api_optimizer
 #   REDIS_URL        e.g. rediss://default:PASS@host:6379/0
 #   SECRET_KEY       random string >= 32 chars (one per environment)
 #   ADMIN_EMAIL      initial admin login (only used the first time tables are created)
 #   ADMIN_PASSWORD   initial admin login
 # Recommended:
-#   CORS_ORIGINS     JSON array of allowed browser origins (the deployed dashboards)
-#   DATABASE_POOL_SIZE / DATABASE_MAX_OVERFLOW  keep low for free-tier MySQL
+#   CORS_ORIGINS     JSON array of allowed browser origins (the deployed dashboard)
+#   OPENAI_API_KEY   enables POST /api/v1/chat; leave unset to disable the LLM gateway
+#   DATABASE_POOL_SIZE / DATABASE_MAX_OVERFLOW  keep low on free-tier databases
 #   TRUSTED_PROXIES  JSON array of reverse-proxy IPs that may set X-Forwarded-For
+#
+# scripts/migrate_db.py runs `alembic upgrade head` and seeds the admin before each deploy.
 
 services:
   - type: web
@@ -20,7 +23,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    preDeployCommand: python migrate_db.py
+    preDeployCommand: python scripts/migrate_db.py
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     autoDeploy: true
@@ -39,6 +42,8 @@ services:
         sync: false
       - key: TRUSTED_PROXIES
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: DEBUG
         value: "false"
       - key: LOG_LEVEL
@@ -46,3 +51,53 @@ services:
       # Demo/load-test endpoints are unauthenticated; keep them off in prod.
       - key: DEMO_ENDPOINT_ENABLED
         value: "false"
+
+  # ---------------------------------------------------------------------------
+  # Esone (esone/): two Render web services, database on Supabase.
+  #
+  #   esone-api  FastAPI, rootDir esone/backend. DATABASE_URL is pasted in the
+  #              dashboard: Supabase *pooler* URI (host *.pooler.supabase.com,
+  #              session mode, port 5432). ESONE_CORS_ORIGINS must list the
+  #              frontend URL (https://esone-web.onrender.com). Optional
+  #              ESONE_CORS_ORIGIN_REGEX for Vercel previews, e.g.
+  #                ^https://esone(-[a-z0-9-]+)?\.vercel\.app$
+  #   esone-web  Not on Render: the static site is built from esone/frontend
+  #              and served by Vercel (esone/frontend/vercel.json, env
+  #              ESONE_WEB_API_URL). It holds no secrets.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: esone-api
+    runtime: python
+    rootDir: esone/backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn esone_api.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: ESONE_ENV
+        value: production
+      - key: ESONE_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ESONE_CORS_ORIGINS
+        sync: false
+      - key: ESONE_CORS_ORIGIN_REGEX
+        sync: false
+      - key: ESONE_ADMIN_USERNAME
+        sync: false
+      - key: ESONE_ADMIN_EMAIL
+        sync: false
+      - key: ESONE_ADMIN_PASSWORD
+        sync: false
+      # The chat is answered by the API Optimizer above, through a service
+      # account with the operator role.
+      - key: ESONE_OPTIMIZER_URL
+        sync: false
+      - key: ESONE_OPTIMIZER_USERNAME
+        sync: false
+      - key: ESONE_OPTIMIZER_PASSWORD
+        sync: false

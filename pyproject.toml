@@ -1,8 +1,22 @@
+[project]
+name = "api-optimizer"
+version = "1.0.0"
+description = "AI-powered API performance, intelligence and security platform"
+requires-python = ">=3.11"
+
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
+exclude = ["venv", "site", "esone"]
 
 [tool.ruff.lint]
-# Gate CI on real problems (undefined names, unused imports, syntax/errors,
-# basic style) rather than stylistic churn across the existing codebase.
+# Gate CI on real problems (undefined names, unused imports, syntax errors,
+# basic style) rather than stylistic churn.
 select = ["E4", "E7", "E9", "F", "W605"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

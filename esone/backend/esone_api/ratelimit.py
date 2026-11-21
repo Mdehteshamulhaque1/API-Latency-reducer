@@ -65,6 +65,12 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                     return JSONResponse(
                         status_code=429,
                         content={"detail": f"Too many attempts. Try again in {wait} seconds"},
-                        headers={"Retry-After": str(wait)},
+                        headers={
+                            "Retry-After": str(wait),
+                            "RateLimit-Limit": str(limit),
+                            "RateLimit-Remaining": "0",
+                            "RateLimit-Reset": str(wait),
+                            "RateLimit-Policy": f"{limit};w={WINDOW_SECONDS}",
+                        },
                     )
         return await call_next(request)

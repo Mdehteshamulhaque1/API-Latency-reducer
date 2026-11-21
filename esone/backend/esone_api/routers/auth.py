@@ -1,7 +1,7 @@
 """Register, login, refresh and logout."""
 from fastapi import APIRouter, Response, status
 
-from esone_api import services
+from esone_api import services, telemetry
 from esone_api.deps import SessionDep
 from esone_api.schemas import TokenRefresh, TokenResponse, UserCreate, UserLogin, UserResponse
 
@@ -17,6 +17,7 @@ async def register(data: UserCreate, session: SessionDep):
 @router.post("/login", response_model=TokenResponse)
 async def login(data: UserLogin, session: SessionDep):
     user = await services.authenticate(session, data.username, data.password)
+    telemetry.mark_end_user(user.id)
     return await services.issue_tokens(session, user)
 
 

@@ -23,11 +23,22 @@ os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_EMAIL"] = "admin@example.com"
 os.environ["ADMIN_PASSWORD"] = "admin-pass-123"
-os.environ["RATE_LIMIT_DEFAULT_REQUESTS"] = "5"
-os.environ["RATE_LIMIT_DEFAULT_PERIOD"] = "3600"
+# Every tier gets a 5-token bucket that refills far too slowly to matter.
+for _tier in ("ANONYMOUS", "USER", "PRIVILEGED"):
+    os.environ[f"RATE_LIMIT_{_tier}_REQUESTS"] = "5"
+    os.environ[f"RATE_LIMIT_{_tier}_PERIOD"] = "3600"
 # The cache/rate-limit integration tests exercise the demo latency endpoint,
 # which is disabled by default in production.
 os.environ["DEMO_ENDPOINT_ENABLED"] = "True"
+# The crawler tests drive a fake Wikipedia; multi-source tests opt in explicitly.
+os.environ["CRAWLER_SOURCES"] = "wikipedia"
+# No model in tests unless a test patches one in: keeps the suite off the network.
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["WEB_SEARCH_PROVIDER"] = ""
+# RAG tests use a throwaway ChromaDB directory, never the dev data folder.
+import tempfile  # noqa: E402
+
+os.environ["CHROMA_PERSIST_DIR"] = tempfile.mkdtemp(prefix="apiopt-chroma-")
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
@@ -61,8 +72,6 @@ async def app_env():
                 hashed_password=PasswordHandler.hash_password(os.environ["ADMIN_PASSWORD"]),
                 role=UserRole.ADMIN,
                 is_active=True,
-                is_superuser=True,
-                api_quota=100000,
             ),
             User(
                 username="operator",
@@ -98,6 +107,8 @@ async def _clean_state():
 
     async with async_session_maker() as session:
         await session.execute(text("DELETE FROM cache_rules"))
+        await session.execute(text("DELETE FROM answer_logs"))
+        await session.execute(text("DELETE FROM end_users"))
         await session.commit()
     yield
     await _flush_redis()

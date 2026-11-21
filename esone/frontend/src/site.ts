@@ -3,21 +3,13 @@
 import { AUTH_EVENT, authGetAccessToken, authGetRole, authLogout } from "./api.js"
 import { qsa } from "./dom.js"
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-  operator: "Operator",
-  viewer: "Viewer",
-  guest: "Guest",
-}
-
 /** Reflect the stored token on <body> so CSS can show the right navbar actions. */
 function syncAuth(): void {
   const token = authGetAccessToken()
   const role = token ? authGetRole() : null
   document.body.dataset.auth = token ? "in" : "out"
   document.body.dataset.role = role ?? ""
-  const label = role ? (ROLE_LABELS[role] ?? role) : null
-  for (const node of qsa("[data-role-label]")) node.textContent = label ? `${label} session` : "Session"
+  for (const node of qsa("[data-role-label]")) node.textContent = "My account"
   for (const node of qsa("[data-admin-only]")) node.hidden = role !== "admin"
 }
 

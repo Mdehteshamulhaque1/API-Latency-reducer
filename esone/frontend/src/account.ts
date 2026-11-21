@@ -1,58 +1,28 @@
-/* Session console: decoded token claims with live countdowns, backend health,
- * profile, token rotation and password change. */
+/* Your account: profile, password change and sign-out. Token internals are
+ * not shown here; the app refreshes sessions silently in the background. */
 import {
-  API_BASE_URL,
   ApiError,
   AUTH_EVENT,
   apiChangePassword,
-  apiHealth,
+  apiChatStats,
   apiMe,
   authGetAccessToken,
-  authGetClaims,
-  authGetRefreshClaims,
   authLogin,
-  authRefresh,
   authStoreTokens,
-  type HealthStatus,
-  type TokenClaims,
   type UserProfile,
 } from "./api.js"
-import {
-  clearAlert,
-  el,
-  formatCountdown,
-  formatDate,
-  formatIsoDate,
-  qs,
-  setPending,
-  setupPasswordToggles,
-  showAlert,
-} from "./dom.js"
+import { clearAlert, el, formatIsoDate, qs, setPending, setupPasswordToggles, showAlert } from "./dom.js"
+import { wireSearchBar } from "./searchbar.js"
 
 const PASSWORD_MIN = 8
-const ROLE_TONE: Record<string, string> = { admin: "pill-ink", operator: "pill-saffron", viewer: "pill-brand" }
-
 const ui = {
   skeleton: qs("#console-skeleton"),
   console: qs("#console"),
   notice: qs("#console-notice"),
-  statSub: qs("#stat-sub"),
-  statRole: qs("#stat-role"),
-  accessCard: qs("#stat-access-card"),
-  statAccess: qs("#stat-access"),
-  statAccessHint: qs("#stat-access-hint"),
-  statRefresh: qs("#stat-refresh"),
-  statRefreshHint: qs("#stat-refresh-hint"),
-  claims: qs("#claims"),
-  rolePill: qs("#role-pill"),
-  typeBadge: qs("#type-badge"),
-  activeBadge: qs("#active-badge"),
-  expiredAlert: qs("#expired-alert"),
-  healthBody: qs("#health-body"),
-  healthMeta: qs("#health-meta"),
-  reloadHealth: qs<HTMLButtonElement>("#reload-health"),
+  statUsername: qs("#stat-username"),
+  statEmail: qs("#stat-email"),
+  statSince: qs("#stat-since"),
   profileBody: qs("#profile-body"),
-  rotate: qs<HTMLButtonElement>("#rotate-btn"),
   passwordForm: qs<HTMLFormElement>("#password-form"),
   passwordAlert: qs("#password-alert"),
   passwordSubmit: qs<HTMLButtonElement>("#password-submit"),
@@ -61,110 +31,7 @@ const ui = {
   confirm: qs<HTMLInputElement>("#confirm-password"),
 }
 
-let claims: TokenClaims | null = null
-let refreshClaims: TokenClaims | null = null
 let profile: UserProfile | null = null
-
-// ----- claims -----
-
-function renderClaims(): void {
-  if (!claims) return
-  ui.statSub.textContent = claims.sub ?? "n/a"
-  ui.statRole.textContent = claims.role ?? "n/a"
-
-  ui.claims.innerHTML = ""
-  const rows: Array<[string, string]> = [
-    ["sub", claims.sub ?? "null"],
-    ["role", claims.role ?? "null"],
-    ["type", claims.type ?? "null"],
-    ["exp", claims.exp ? String(claims.exp) : "null"],
-  ]
-  ui.claims.appendChild(el("span", "claims-brace", "{"))
-  for (const [key, value] of rows) {
-    const shown = key === "exp" ? value : `"${value}"`
-    ui.claims.appendChild(
-      el("div", "claims-row", undefined, [el("span", "claims-key", `"${key}":`), el("span", "claims-value", `${shown},`)]),
-    )
-  }
-  ui.claims.appendChild(el("span", "claims-brace", "}"))
-
-  if (claims.role) {
-    ui.rolePill.textContent = claims.role
-    ui.rolePill.className = `pill ${ROLE_TONE[claims.role] ?? "pill-neutral"}`
-    ui.rolePill.hidden = false
-  } else {
-    ui.rolePill.hidden = true
-  }
-  ui.typeBadge.textContent = `type: ${claims.type ?? "unknown"}`
-  tick()
-}
-
-function tick(): void {
-  if (!claims) return
-  const now = Math.floor(Date.now() / 1000)
-  const remaining = claims.exp ? claims.exp - now : 0
-  const expired = Boolean(claims.exp) && remaining <= 0
-
-  ui.statAccess.textContent = formatCountdown(remaining)
-  ui.statAccess.classList.toggle("is-danger", expired)
-  ui.accessCard.dataset.tone = expired ? "danger" : remaining < 120 ? "saffron" : "brand"
-  ui.statAccessHint.textContent = formatDate(claims.exp)
-
-  if (refreshClaims) {
-    const refreshRemaining = refreshClaims.exp ? refreshClaims.exp - now : 0
-    ui.statRefresh.textContent = formatCountdown(refreshRemaining)
-    ui.statRefreshHint.textContent = formatDate(refreshClaims.exp)
-  } else {
-    ui.statRefresh.textContent = "n/a"
-    ui.statRefreshHint.textContent = "no refresh token"
-  }
-
-  ui.activeBadge.textContent = expired ? "expired" : "active"
-  ui.activeBadge.className = `badge ${expired ? "badge-danger" : "badge-live"}`
-  ui.expiredAlert.hidden = !expired
-}
-
-// ----- health -----
-
-function healthBadge(value: string | undefined): HTMLElement {
-  const ok = value === "healthy" || value === "ok"
-  const badge = el("span", `badge ${ok ? "badge-live" : "badge-accent"}`)
-  badge.appendChild(el("span", `dot ${ok ? "dot-brand dot-pulse" : "dot-saffron"}`))
-  badge.appendChild(document.createTextNode(value ?? "unknown"))
-  return badge
-}
-
-function renderHealth(health: HealthStatus | null, error: string | null): void {
-  ui.healthBody.innerHTML = ""
-  if (error) {
-    showAlert(ui.healthBody, "destructive", error)
-  } else if (!health) {
-    for (let i = 0; i < 3; i += 1) ui.healthBody.appendChild(el("div", "skeleton skeleton-row"))
-  } else {
-    const list = el("ul", "rows")
-    const rows: Array<[string, string]> = [
-      ["API", health.status],
-      ["Database", health.database],
-    ]
-    for (const [label, value] of rows) {
-      const row = el("li", "row")
-      row.appendChild(el("span", "row-label", label))
-      row.appendChild(healthBadge(value))
-      list.appendChild(row)
-    }
-    ui.healthBody.appendChild(list)
-  }
-  ui.healthMeta.textContent = `${health?.version ? `version ${health.version} | ` : ""}${API_BASE_URL}`
-}
-
-async function loadHealth(): Promise<void> {
-  renderHealth(null, null)
-  try {
-    renderHealth(await apiHealth(), null)
-  } catch (err) {
-    renderHealth(null, err instanceof ApiError ? err.message : "Backend unreachable")
-  }
-}
 
 // ----- profile -----
 
@@ -178,10 +45,16 @@ function renderProfile(error: string | null): void {
     for (let i = 0; i < 3; i += 1) ui.profileBody.appendChild(el("div", "skeleton skeleton-row"))
     return
   }
+  ui.statUsername.textContent = profile.username
+  ui.statEmail.textContent = profile.email
+  ui.statSince.textContent = formatIsoDate(profile.created_at, { dateStyle: "medium" })
+
   const list = el("ul", "rows")
   const rows: Array<[string, string]> = [
     ["Username", profile.username],
     ["Email", profile.email],
+    ["Role", profile.role],
+    ["Status", profile.is_active ? "active" : "disabled"],
     ["Member since", formatIsoDate(profile.created_at, { dateStyle: "long" })],
   ]
   for (const [label, value] of rows) {
@@ -193,6 +66,27 @@ function renderProfile(error: string | null): void {
   ui.profileBody.appendChild(list)
 }
 
+// ----- usage -----
+
+async function loadUsage(): Promise<void> {
+  const host = qs("#billing-rows")
+  host.innerHTML = ""
+  const row = (label: string, value: string) => {
+    const li = el("li", "row")
+    li.appendChild(el("span", "row-label", label))
+    li.appendChild(el("span", "row-value mono", value))
+    host.appendChild(li)
+  }
+  try {
+    const stats = await apiChatStats(24 * 365)
+    row("Searches", stats.total_queries.toLocaleString())
+    row("Instant answers", stats.cache_hits.toLocaleString())
+    row("Freshly researched", stats.misses.toLocaleString())
+  } catch (err) {
+    row("Usage", err instanceof ApiError ? err.message : "Could not load your usage")
+  }
+}
+
 async function loadProfile(): Promise<void> {
   profile = null
   renderProfile(null)
@@ -200,28 +94,14 @@ async function loadProfile(): Promise<void> {
     profile = await apiMe()
     renderProfile(null)
   } catch (err) {
-    renderProfile(err instanceof ApiError ? err.message : "Backend unreachable")
+    renderProfile(err instanceof ApiError ? err.message : "Could not load your profile")
+  } finally {
+    ui.skeleton.hidden = true
+    ui.console.hidden = false
   }
 }
 
-// ----- actions -----
-
-ui.rotate.addEventListener("click", async () => {
-  ui.rotate.disabled = true
-  ui.rotate.dataset.pending = "true"
-  clearAlert(ui.notice)
-  try {
-    await authRefresh()
-    showAlert(ui.notice, "success", "Token pair rotated. New expiry applied.")
-  } catch (err) {
-    showAlert(ui.notice, "destructive", err instanceof ApiError ? err.message : "Refresh failed. Sign in again.")
-  } finally {
-    ui.rotate.disabled = false
-    ui.rotate.dataset.pending = "false"
-  }
-})
-
-ui.reloadHealth.addEventListener("click", () => void loadHealth())
+// ----- password -----
 
 function updatePasswordButton(): void {
   const pending = ui.passwordForm.dataset.pending === "true"
@@ -248,19 +128,15 @@ ui.passwordForm.addEventListener("submit", async (event) => {
   try {
     await apiChangePassword(ui.current.value, newPassword)
     if (profile?.username) {
-      // The server revoked all refresh tokens; obtain a fresh pair so this session continues.
+      // Other sessions were signed out; sign this one in again so it continues.
       authStoreTokens(await authLogin(profile.username, newPassword))
     }
     ui.current.value = ""
     ui.next.value = ""
     ui.confirm.value = ""
-    showAlert(ui.passwordAlert, "success", "Password changed. Other sessions have been signed out.")
+    showAlert(ui.passwordAlert, "success", "Password changed. Other devices have been signed out.")
   } catch (err) {
-    showAlert(
-      ui.passwordAlert,
-      "destructive",
-      err instanceof ApiError ? err.message : "Could not reach the authentication server.",
-    )
+    showAlert(ui.passwordAlert, "destructive", err instanceof ApiError ? err.message : "Could not reach the server.")
   } finally {
     setPending(ui.passwordForm, false)
     updatePasswordButton()
@@ -271,20 +147,15 @@ ui.passwordForm.addEventListener("submit", async (event) => {
 
 function sync(): void {
   if (!authGetAccessToken()) {
-    // Tokens were cleared (sign-out, failed refresh, another tab). Leave the page.
+    // Signed out here or in another tab. Leave the page.
     window.location.replace("/login?next=/account")
     return
   }
-  claims = authGetClaims()
-  refreshClaims = authGetRefreshClaims()
-  renderClaims()
-  ui.skeleton.hidden = true
-  ui.console.hidden = false
-  void loadHealth()
   void loadProfile()
+  void loadUsage()
 }
 
 sync()
-window.setInterval(tick, 1000)
 window.addEventListener(AUTH_EVENT, sync)
 window.addEventListener("storage", sync)
+wireSearchBar()

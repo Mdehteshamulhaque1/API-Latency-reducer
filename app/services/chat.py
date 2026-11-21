@@ -1,5 +1,5 @@
 """
-OpenAI chat completion service with retries, exact-match caching, and usage tracking.
+LLM chat completion service (OpenAI-compatible protocol) with retries, exact-match caching, and usage tracking.
 """
 import asyncio
 import hashlib
@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.core import metrics as gateway_metrics
 from app.config import settings, compute_estimated_cost
 from app.core.constants import CACHE_KEY_CHAT_PREFIX
 from app.core.exceptions import ExternalServiceError
@@ -67,7 +68,7 @@ def _as_optional_int(value: Any) -> int | None:
 
 
 class ChatService:
-    """Call the OpenAI Chat Completions API with bounded retries and exact-match caching."""
+    """Call an OpenAI-compatible Chat Completions API with bounded retries and exact-match caching."""
 
     def __init__(
         self,
@@ -93,8 +94,8 @@ class ChatService:
         """Create a chat completion, using cache, primary, then fallback."""
         if not self._settings.openai_api_key:
             raise ExternalServiceError(
-                "OpenAI",
-                "OpenAI API key is not configured",
+                self._provider,
+                "LLM API key is not configured (OPENAI_API_KEY)",
                 details={"reason": "missing_api_key"},
             )
 
@@ -149,6 +150,7 @@ class ChatService:
 
         allowed = breaker.allow_request()
         breaker_state = breaker.state
+        gateway_metrics.set_circuit_breaker_state(primary_model, breaker_state.value)
         if not allowed:
             if breaker_state is CircuitState.HALF_OPEN:
                 logger.info(
@@ -220,11 +222,17 @@ class ChatService:
             )
         except ExternalServiceError as primary_error:
             if not self._is_fallback_eligible(primary_error):
+                gateway_metrics.record_failure(
+                    primary_model,
+                    latency_seconds=time.perf_counter() - started_at,
+                    fallback_attempted=False,
+                )
                 raise
 
             previous_state = breaker.state
             breaker.record_failure()
             new_state = breaker.state
+            gateway_metrics.set_circuit_breaker_state(primary_model, new_state.value)
             if new_state is CircuitState.OPEN and previous_state is not CircuitState.OPEN:
                 logger.warning(
                     "Primary model circuit opened",
@@ -271,6 +279,7 @@ class ChatService:
 
         previous_state = breaker.state
         breaker.record_success()
+        gateway_metrics.set_circuit_breaker_state(primary_model, breaker.state.value)
         if previous_state is CircuitState.HALF_OPEN:
             logger.info(
                 "Primary model circuit closed",
@@ -304,6 +313,7 @@ class ChatService:
             global_completion_price=getattr(settings, "chat_completion_price_per_million", 0.0),
         )
         cache_type = "miss"
+        response.estimated_cost_usd = round(estimated_cost_usd, 8)
 
         self._log_success(
             response,
@@ -321,12 +331,17 @@ class ChatService:
         )
         return response
 
+    @property
+    def _provider(self) -> str:
+        """Provider label (LLM_PROVIDER) used in errors, logs, metrics and usage rows."""
+        return getattr(self._settings, "llm_provider", "openai")
+
     def _get_breaker(self, model: str) -> CircuitBreaker:
         """Return the injected or process-wide breaker for a primary model."""
         if self._breaker is not None:
             return self._breaker
         return get_circuit_breaker(
-            f"openai:{model}",
+            f"{self._provider}:{model}",
             failure_threshold=getattr(self._settings, "llm_circuit_failure_threshold", 5),
             cooldown_seconds=getattr(self._settings, "llm_circuit_cooldown_seconds", 30.0),
             half_open_max_probes=getattr(
@@ -347,7 +362,7 @@ class ChatService:
         messages: list[dict[str, Any]],
         request: ChatRequest,
     ) -> dict[str, Any]:
-        """Build an OpenAI chat-completions payload for one model."""
+        """Build an OpenAI-style chat-completions payload for one model."""
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -375,28 +390,34 @@ class ChatService:
         }
         timeout = httpx.Timeout(self._settings.openai_timeout_seconds)
 
-        if self._client is not None:
-            return await self._request_with_retries(
-                self._client,
-                url,
-                headers,
-                payload,
-                model,
-                user_id,
-                correlation_id,
-                max_retries=max_retries,
-            )
+        provider_started = time.perf_counter()
+        try:
+            if self._client is not None:
+                return await self._request_with_retries(
+                    self._client,
+                    url,
+                    headers,
+                    payload,
+                    model,
+                    user_id,
+                    correlation_id,
+                    max_retries=max_retries,
+                )
 
-        async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
-            return await self._request_with_retries(
-                client,
-                url,
-                headers,
-                payload,
-                model,
-                user_id,
-                correlation_id,
-                max_retries=max_retries,
+            async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
+                return await self._request_with_retries(
+                    client,
+                    url,
+                    headers,
+                    payload,
+                    model,
+                    user_id,
+                    correlation_id,
+                    max_retries=max_retries,
+                )
+        finally:
+            gateway_metrics.observe_provider_latency(
+                model, time.perf_counter() - provider_started
             )
 
     async def _fallback_or_raise(
@@ -417,9 +438,14 @@ class ChatService:
     ) -> ChatResponse:
         """Use the fallback model, its cache, or raise a clean error."""
         if fallback_model is None:
+            gateway_metrics.record_failure(
+                primary_model,
+                latency_seconds=time.perf_counter() - started_at,
+                fallback_attempted=False,
+            )
             if primary_error is None:
                 raise ExternalServiceError(
-                    "OpenAI",
+                    self._provider,
                     "Primary model circuit is open and no fallback model is configured",
                     details={
                         "reason": "circuit_open",
@@ -478,11 +504,17 @@ class ChatService:
                     "correlation_id": correlation_id,
                 },
             )
+            gateway_metrics.record_failure(
+                fallback_model,
+                latency_seconds=time.perf_counter() - started_at,
+                fallback_attempted=True,
+            )
             all_models_error = self._all_models_failed_error(
                 primary_model,
                 fallback_model,
                 primary_error,
                 fallback_error,
+                provider=self._provider,
             )
             logger.error(
                 "All configured chat models failed",
@@ -507,6 +539,15 @@ class ChatService:
             )
 
         circuit_state = breaker.state.value
+        estimated_cost_usd = compute_estimated_cost(
+            served_model=response.served_model or fallback_model,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            pricing_table=settings.PRICING_TABLE,
+            global_prompt_price=getattr(settings, "chat_prompt_price_per_million", 0.0),
+            global_completion_price=getattr(settings, "chat_completion_price_per_million", 0.0),
+        )
+        response.estimated_cost_usd = round(estimated_cost_usd, 8)
         self._log_success(
             response,
             requested_model,
@@ -518,6 +559,7 @@ class ChatService:
             correlation_id,
             fallback_used=True,
             circuit_state=circuit_state,
+            estimated_cost_usd=estimated_cost_usd,
         )
         return response
 
@@ -545,12 +587,16 @@ class ChatService:
                 "latency_ms": round(latency_ms, 3),
                 "served_model": cached_response.served_model or cached_response.model,
                 "fallback_used": fallback_used,
+                "estimated_cost_usd": 0.0,
             }
+        )
+        gateway_metrics.record_cache_hit(
+            response.served_model or response.model, response.latency_ms / 1000
         )
         logger.info(
             "Chat completion cache hit",
             extra={
-                "provider": "openai",
+                "provider": self._provider,
                 "requested_model": requested_model,
                 "primary_model": primary_model,
                 "fallback_model": fallback_model,
@@ -585,10 +631,18 @@ class ChatService:
         cache_type: str = "miss",
     ) -> None:
         """Log one successful provider call with model attribution."""
+        gateway_metrics.record_success(
+            response.served_model or response.model,
+            latency_seconds=response.latency_ms / 1000,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            estimated_cost_usd=estimated_cost_usd,
+            fallback_used=fallback_used,
+        )
         logger.info(
-            "OpenAI chat completion succeeded",
+            "Chat completion succeeded",
             extra={
-                "provider": "openai",
+                "provider": self._provider,
                 "requested_model": requested_model,
                 "primary_model": primary_model,
                 "fallback_model": fallback_model,
@@ -626,10 +680,11 @@ class ChatService:
         fallback_model: str,
         primary_error: ExternalServiceError | None,
         fallback_error: ExternalServiceError,
+        provider: str = "llm",
     ) -> ExternalServiceError:
         """Build a clean 503 error when both model paths fail."""
         return ExternalServiceError(
-            "OpenAI",
+            provider,
             "All configured chat models failed",
             details={
                 "primary_model": primary_model,
@@ -704,7 +759,9 @@ class ChatService:
         try:
             stored = await self._cache.set(
                 cache_key,
-                response.model_dump(mode="json", exclude={"cached", "latency_ms"}),
+                response.model_dump(
+                    mode="json", exclude={"cached", "latency_ms", "estimated_cost_usd"}
+                ),
                 ttl=self._cache_ttl,
             )
         except Exception as exc:
@@ -740,7 +797,7 @@ class ChatService:
         correlation_id: str | None,
         max_retries: int | None = None,
     ) -> tuple[dict[str, Any], int]:
-        """POST to OpenAI, retrying transient failures within the configured limit."""
+        """POST to the provider, retrying transient failures within the configured limit."""
         retry_limit = (
             self._settings.openai_max_retries
             if max_retries is None
@@ -755,9 +812,9 @@ class ChatService:
                 reason = type(exc).__name__
                 if attempt >= attempts_allowed - 1:
                     logger.error(
-                        "OpenAI chat completion failed",
+                        "Chat completion failed",
                         extra={
-                            "provider": "openai",
+                            "provider": self._provider,
                             "model": model,
                             "reason": reason,
                             "attempts": attempts_allowed,
@@ -766,17 +823,17 @@ class ChatService:
                         },
                     )
                     raise _ProviderFailure(
-                        "OpenAI",
-                        "OpenAI request failed after retries",
+                        self._provider,
+                        "LLM request failed after retries",
                         details={"reason": reason, "attempts": attempts_allowed},
                         fallback_eligible=True,
                     ) from exc
 
                 delay = self._retry_delay(attempt)
                 logger.warning(
-                    "Retrying OpenAI request",
+                    "Retrying chat completion request",
                     extra={
-                        "provider": "openai",
+                        "provider": self._provider,
                         "model": model,
                         "reason": reason,
                         "attempt": attempt + 1,
@@ -794,16 +851,16 @@ class ChatService:
                     data = response.json()
                 except ValueError as exc:
                     raise _ProviderFailure(
-                        "OpenAI",
-                        "OpenAI returned an invalid response",
+                        self._provider,
+                        "LLM provider returned an invalid response",
                         details={"reason": "invalid_json"},
                         fallback_eligible=False,
                     ) from exc
 
                 if not isinstance(data, dict):
                     raise _ProviderFailure(
-                        "OpenAI",
-                        "OpenAI returned an invalid response",
+                        self._provider,
+                        "LLM provider returned an invalid response",
                         details={"reason": "invalid_payload"},
                         fallback_eligible=False,
                     )
@@ -813,9 +870,9 @@ class ChatService:
             if retryable and attempt < attempts_allowed - 1:
                 delay = self._retry_delay(attempt, response)
                 logger.warning(
-                    "Retrying OpenAI request",
+                    "Retrying chat completion request",
                     extra={
-                        "provider": "openai",
+                        "provider": self._provider,
                         "model": model,
                         "status_code": response.status_code,
                         "attempt": attempt + 1,
@@ -832,9 +889,9 @@ class ChatService:
             if retryable:
                 details["attempts"] = attempts_allowed
             logger.error(
-                "OpenAI chat completion failed",
+                "Chat completion failed",
                 extra={
-                    "provider": "openai",
+                    "provider": self._provider,
                     "model": model,
                     "status_code": response.status_code,
                     "attempts": attempt + 1,
@@ -843,15 +900,15 @@ class ChatService:
                 },
             )
             raise _ProviderFailure(
-                "OpenAI",
-                "OpenAI request failed",
+                self._provider,
+                "LLM request failed",
                 details=details,
                 fallback_eligible=retryable,
             )
 
         raise _ProviderFailure(
-            "OpenAI",
-            "OpenAI request failed",
+            self._provider,
+            "LLM request failed",
             details={"reason": "retry_exhausted"},
             fallback_eligible=True,
         )
@@ -875,12 +932,12 @@ class ChatService:
         *,
         fallback_used: bool = False,
     ) -> ChatResponse:
-        """Normalize an OpenAI response into the public response schema."""
+        """Normalize an OpenAI-style response into the public response schema."""
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
             raise _ProviderFailure(
-                "OpenAI",
-                "OpenAI returned an invalid response",
+                self._provider,
+                "LLM provider returned an invalid response",
                 details={"reason": "missing_choices"},
                 fallback_eligible=False,
             )
@@ -888,8 +945,8 @@ class ChatService:
         choice = choices[0]
         if not isinstance(choice, dict):
             raise _ProviderFailure(
-                "OpenAI",
-                "OpenAI returned an invalid response",
+                self._provider,
+                "LLM provider returned an invalid response",
                 details={"reason": "invalid_choice"},
                 fallback_eligible=False,
             )
@@ -898,8 +955,8 @@ class ChatService:
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str):
             raise _ProviderFailure(
-                "OpenAI",
-                "OpenAI returned an invalid response",
+                self._provider,
+                "LLM provider returned an invalid response",
                 details={"reason": "missing_content"},
                 fallback_eligible=False,
             )

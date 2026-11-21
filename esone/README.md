@@ -5,7 +5,7 @@ JWT authentication platform. Two small Python services:
 | Folder | What | Stack |
 | --- | --- | --- |
 | `backend/` | Esone API: register, login, refresh, logout, profile, password change, admin user management | FastAPI, SQLAlchemy 2 async, SQLite locally, Supabase Postgres in production |
-| `frontend/` | Esone Web: the landing page, sign-in and sign-up forms, session console and admin users table | Jinja2 templates rendered to static HTML by `build.py` (FastAPI page server for local dev), plain CSS, TypeScript compiled to browser JavaScript |
+| `frontend/` | Esone Web: the landing page, sign-in and sign-up forms, the search page, the account page (profile, password, usage and charges) and the admin users table | Jinja2 templates rendered to static HTML by `build.py` (FastAPI page server for local dev), plain CSS, TypeScript compiled to browser JavaScript |
 
 No React, no Next.js, no bundler. The TypeScript in `frontend/src` is compiled
 by `tsc` to plain ES modules which are committed. In production the frontend is

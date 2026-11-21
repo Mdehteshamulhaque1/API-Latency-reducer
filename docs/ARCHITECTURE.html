@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>API Optimizer — Architecture</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 { font-size: 15pt; margin: 26px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #1a1a1a; }
+  h3 { font-size: 12pt; margin: 18px 0 6px; }
+  p { margin: 6px 0; }
+  .sub { color: #555; margin-bottom: 18px; }
+  .meta { font-size: 9pt; color: #666; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.5pt; }
+  th, td { border: 1px solid #c9c9c9; padding: 5px 7px; vertical-align: top; text-align: left; }
+  th { background: #f0f0f0; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; background: #f3f3f3; padding: 0 3px; border-radius: 3px; }
+  .box { border: 1.5px solid #1a1a1a; border-radius: 6px; padding: 8px 10px; background: #fafafa; }
+  .box h4 { margin: 0 0 4px; font-size: 10.5pt; }
+  .box p { margin: 0; font-size: 9.5pt; color: #333; }
+  .row { display: flex; gap: 10px; margin: 8px 0; }
+  .row > .box { flex: 1; }
+  .tag { display: inline-block; font-size: 8.5pt; border: 1px solid #888; border-radius: 10px; padding: 0 7px; margin-left: 4px; color: #444; }
+  .new { border-color: #2a78d6; color: #2a78d6; }
+  .flow { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f7f7f7; border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; white-space: pre; line-height: 1.35; }
+  .status-ok { color: #1b7a3d; font-weight: 600; }
+  .status-part { color: #b26a00; font-weight: 600; }
+  .status-new { color: #2a78d6; font-weight: 600; }
+  .pagebreak { page-break-before: always; }
+  ul { margin: 4px 0 8px 18px; padding: 0; }
+  li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<h1>API Optimizer</h1>
+<p class="sub">AI-powered API performance, intelligence and security platform · Architecture document</p>
+<p class="meta">Version 2 · 15 November 2026 · Reflects the completed codebase: hardening, AI usage tracking, guardrails, assistant, RAG knowledge base, and the dashboard.</p>
+
+<h2>1. Purpose</h2>
+<p>API Optimizer sits in front of an HTTP API and makes it faster, safer and observable: Redis response caching cuts latency for repeated reads, token-bucket rate limiting protects the upstream, every request is measured and stored for analytics, and an LLM gateway with retries, fallback and a circuit breaker exposes chat completions. The AI layer adds an assistant that reasons over the measured data, a RAG pipeline over uploaded documentation, and basic guardrails around every model call.</p>
+
+<h2>2. System overview</h2>
+<div class="row">
+  <div class="box"><h4>Dashboard <span class="tag">site/ · Next.js 14</span></h4><p>Login, overview, analytics, LLM gateway, cache rules, playground, status. Talks to the backend only through <code>site/lib/api.ts</code> with JWT bearer tokens. No mock data.</p></div>
+  <div class="box"><h4>Backend <span class="tag">app/ · FastAPI</span></h4><p>Modular monolith: routers → services → models. Six middlewares in a fixed order. Async end to end (SQLAlchemy 2 async, redis.asyncio, httpx).</p></div>
+</div>
+<div class="row">
+  <div class="box"><h4>Relational DB <span class="tag">SQLite / MySQL / Postgres</span></h4><p>Users, cache rules, one row per request (<code>api_logs</code>), hourly roll-ups. Schema managed by Alembic.</p></div>
+  <div class="box"><h4>Redis</h4><p>Response cache entries, LLM exact-match cache, token buckets, revoked-token denylist, cache hit/miss counters. Every use fails open.</p></div>
+  <div class="box"><h4>LLM provider <span class="tag">OpenAI-compatible</span></h4><p>Chat Completions over HTTPS. OpenAI by default; any compatible server (Ollama locally) via <code>OPENAI_BASE_URL</code>.</p></div>
+  <div class="box"><h4>Vector store <span class="tag">implemented</span></h4><p>ChromaDB on local disk for document chunks and embeddings (RAG).</p></div>
+</div>
+
+<h2>3. Request pipeline</h2>
+<p>Starlette builds the middleware stack in reverse registration order, so the last middleware registered is the outermost. Every request passes through these layers in this order:</p>
+<div class="flow">client ──► CORS ──► Metrics ──► CorrelationId ──► Auth ──► RateLimit ──► Cache ──► route handler
+
+  CORS           allowed browser origins (CORS_ORIGINS); exposes custom headers to JS
+  Metrics        wall-clock timing, JSON log line, X-Response-Time;
+                 APILog row + hourly roll-up written AFTER the response is sent
+  CorrelationId  X-Correlation-ID from the header or a new UUID; echoed back, in every log
+  Auth           Bearer JWT: type=access, signature, expiry, not revoked;
+                 sets request.state.user_id / role
+  RateLimit      token bucket per user (or IP); 429 + Retry-After when empty; fails open
+  Cache          GET with an enabled rule: serve from Redis (X-Cache-Hit)
+                 or store the 200 body after the handler ran (X-Cache-Stored)</div>
+<p>Why this order: Auth runs before RateLimit so the limiter can key on the user, not just the IP. Cache is innermost so a cache hit still counts against the limit and still appears in analytics. Metrics is outermost so it measures everything, including rejected requests.</p>
+
+<h2>4. Backend components</h2>
+<table>
+  <tr><th style="width:22%">Component</th><th style="width:30%">Files</th><th>Responsibility and key decisions</th></tr>
+  <tr><td>Auth and RBAC</td><td><code>core/security.py</code>, <code>services/auth.py</code>, <code>services/token_denylist.py</code>, <code>middleware/auth.py</code></td><td>bcrypt password hashing; HS256 access (30 min) and refresh (7 d) tokens with <code>type</code> and <code>jti</code> claims; logout stores the <code>jti</code> in a Redis denylist until expiry. Roles: admin, operator, viewer. Self-registration can only produce viewer.</td></tr>
+  <tr><td>Rate limiting</td><td><code>services/rate_limit.py</code>, <code>middleware/rate_limit.py</code></td><td>Token bucket in a Lua script (atomic read-modify-write). Capacity and period from settings. Keyed by <code>user:&lt;id&gt;</code> or <code>ip:&lt;addr&gt;</code>; client-supplied headers are never trusted except <code>X-Forwarded-For</code> from configured proxies. Emits <code>X-RateLimit-*</code> and a real <code>Retry-After</code>.</td></tr>
+  <tr><td>Response cache</td><td><code>services/cache.py</code>, <code>middleware/cache.py</code>, <code>api/v1/rules.py</code>, <code>api/v1/cache.py</code></td><td>Per-endpoint rules (pattern, TTL, key parts, size budget, priority) stored in SQL and cached in Redis for 10 s. Only 200 GET responses are stored; authenticated responses are always keyed per user. Invalidation by TTL, per rule, or all, using SCAN never FLUSHALL.</td></tr>
+  <tr><td>Analytics</td><td><code>services/analytics.py</code>, <code>api/v1/analytics.py</code></td><td>SQL aggregates over <code>api_logs</code>: totals, error and 429 counts, cache ratio, p50/p95/p99 via window functions (per-endpoint percentiles in one query), latency series, slow-endpoint ranking, heuristic suggestions, before/after benchmark. All numbers are measured, none estimated.</td></tr>
+  <tr><td>Structured logging</td><td><code>utils/logger.py</code>, <code>middleware/correlation_id.py</code></td><td>JSON lines to stdout with correlation id, method, path, status, duration, cache flag. Bodies, headers and secrets are never logged.</td></tr>
+  <tr><td>LLM gateway</td><td><code>services/chat.py</code>, <code>services/circuit_breaker.py</code>, <code>metrics.py</code>, <code>api/v1/chat.py</code></td><td>Exact-match Redis cache (temperature 0 only), bounded retries with backoff, primary→fallback model, process-local circuit breaker, Prometheus counters and histograms recorded by the service itself, cost estimate from a per-million-token pricing table.</td></tr>
+  <tr><td>Health and metrics</td><td><code>api/v1/health.py</code>, <code>GET /metrics</code></td><td>Database and Redis probes; Prometheus text exposition.</td></tr>
+</table>
+
+<h2>5. Data model</h2>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Notable columns and indexes</th></tr>
+  <tr><td><code>users</code></td><td>Accounts and roles</td><td>username, email (unique), hashed_password, role, is_active</td></tr>
+  <tr><td><code>cache_rules</code></td><td>What to cache and how</td><td>endpoint_pattern, ttl, enabled, cache_by_user / query_params / headers, max_cache_size (KB), priority</td></tr>
+  <tr><td><code>api_logs</code></td><td>One row per request</td><td>endpoint, status_code, response_time_ms, cache_hit, client_ip, correlation_id, sizes; indexes on endpoint, status, created_at, user</td></tr>
+  <tr><td><code>analytics</code></td><td>Hourly roll-ups</td><td>per user and hour: totals, errors, hits, misses, avg/min/max latency</td></tr>
+  <tr><td><code>documents</code> <span class="tag">implemented</span></td><td>Uploaded knowledge-base files</td><td>filename, content hash (duplicate detection), size, status, owner</td></tr>
+  <tr><td><code>document_chunks</code> <span class="tag">implemented</span></td><td>Chunk metadata (vectors live in ChromaDB)</td><td>document_id, position, token count, chroma id</td></tr>
+  <tr><td><code>ai_request_logs</code> <span class="tag">implemented</span></td><td>Every model call</td><td>model, prompt/completion tokens, latency, cached, estimated cost, outcome</td></tr>
+  <tr><td><code>guardrail_events</code> <span class="tag">implemented</span></td><td>Security audit trail</td><td>category (injection, pii, blocked, output_invalid, retrieval_failed), correlation id, no raw prompts</td></tr>
+</table>
+<p>Rate-limit events need no table: a rejected request is an <code>api_logs</code> row with status 429. Redis keys: <code>rule:*</code> responses, <code>chat:*</code> LLM cache, <code>rate_limit:*</code> buckets, <code>auth:revoked:*</code> denylist, <code>cache:stats:*</code> counters.</p>
+
+<h2 class="pagebreak">6. API surface</h2>
+<table>
+  <tr><th style="width:34%">Route</th><th style="width:14%">Access</th><th>Notes</th></tr>
+  <tr><td><code>POST /api/v1/auth/register | login | refresh | logout</code></td><td>public / bearer</td><td>logout revokes both tokens</td></tr>
+  <tr><td><code>GET /api/v1/analytics/summary | endpoints | slow-endpoints | benchmark | suggestions</code>, <code>POST …/benchmark/run</code></td><td>any role</td><td><code>hours</code> 1–720; scoped to the caller's own traffic</td></tr>
+  <tr><td><code>GET|POST /api/v1/rules</code>, <code>GET|PUT|DELETE /api/v1/rules/{id}</code></td><td>read: any · write: admin, operator · delete: admin</td><td>rule changes invalidate the cached rule list immediately</td></tr>
+  <tr><td><code>GET /api/v1/cache/stats</code>, <code>POST /api/v1/cache/invalidate</code></td><td>any · admin, operator</td><td>invalidate one rule, all responses, optionally the LLM cache</td></tr>
+  <tr><td><code>GET /api/v1/rate-limits/config | me | events</code></td><td>any role</td><td>admins see every user's 429s, others their own</td></tr>
+  <tr><td><code>POST /api/v1/chat</code></td><td>any role</td><td>OpenAI-style messages; returns served model, cached flag, usage, latency</td></tr>
+  <tr><td><code>GET /api/v1/health</code>, <code>GET /api/v1/ping</code>, <code>GET /metrics</code></td><td>public</td><td>health probes and Prometheus</td></tr>
+  <tr><td><code>/api/v1/assistant</code>, <code>/api/v1/documents</code>, <code>/api/v1/knowledge-base</code>, <code>/api/v1/guardrails</code>, <code>/api/v1/ai-usage</code></td><td>any role · uploads and deletes: admin, operator</td><td>performance assistant, RAG upload/search/ask, audit events, token and cost usage</td></tr>
+</table>
+
+<h2>7. AI layer <span class="tag">implemented</span></h2>
+<p>One new package, <code>app/ai/</code>, keeps the AI code separate from the request pipeline so an AI failure can never break caching, limiting or analytics.</p>
+<div class="row">
+  <div class="box"><h4>provider</h4><p>Thin wrapper over the existing <code>ChatService</code>; one LLM provider, swappable through <code>OPENAI_BASE_URL</code>.</p></div>
+  <div class="box"><h4>assistant</h4><p>Tool calling over a fixed set of analytics functions (summary, slow endpoints, cache stats, rate-limit events). No SQL from the model.</p></div>
+  <div class="box"><h4>rag</h4><p>ingest → extract (PDF, TXT, MD) → clean → chunk → embed → ChromaDB → retrieve top-k → build context → answer with sources, or say "not enough information".</p></div>
+  <div class="box"><h4>guardrails</h4><p>Length and type validation, prompt-injection heuristics, regex PII masking before the provider call, Pydantic output validation, grounding check against retrieved chunks.</p></div>
+</div>
+<div class="flow">user question
+  ─► validate input ─► injection check ─► mask PII
+  ─► metric tools OR vector retrieval ─► build context
+  ─► LLM via the gateway (cache / retries / fallback / breaker)
+  ─► validate output + cite sources ─► response
+  ─► ai_request_logs (tokens, latency, estimated cost)
+     + guardrail_events (what was flagged; never the raw prompt)</div>
+<p>Retrieved document text is treated as untrusted data: it is placed in a clearly delimited context block, never as instructions, and uploaded files are scanned for instruction-like content at ingest time. Prompt-injection detection is heuristic and cannot guarantee complete protection; the audit log records what it caught.</p>
+
+<h2>8. Failure behaviour</h2>
+<table>
+  <tr><th style="width:26%">Dependency down</th><th>Effect</th></tr>
+  <tr><td>Redis</td><td>Requests still succeed: no caching, no rate limiting, logout revocation not enforced, LLM cache bypassed. Health reports <em>degraded</em>.</td></tr>
+  <tr><td>Database</td><td>Auth, rules and analytics fail with controlled errors; analytics writes are logged and dropped, responses are unaffected.</td></tr>
+  <tr><td>LLM provider</td><td>Retries with backoff → fallback model → circuit breaker opens for a cooldown → clean 503. Core API features unaffected.</td></tr>
+  <tr><td>Embedding model / vector store <span class="tag">implemented</span></td><td>Uploads and searches return 503; assistant falls back to metric tools only.</td></tr>
+</table>
+
+<h2>9. Deployment and verification</h2>
+<ul>
+  <li><strong>Local:</strong> <code>python scripts/migrate_db.py</code> then <code>uvicorn app.main:app</code>; dashboard with <code>npm run dev</code> in <code>site/</code>; Redis via Docker.</li>
+  <li><strong>Docker Compose:</strong> redis + backend; the image runs migrations before serving.</li>
+  <li><strong>Render:</strong> <code>render.yaml</code> blueprint, <code>scripts/migrate_db.py</code> as pre-deploy command, secrets set in the dashboard. Dashboard on Vercel with <code>NEXT_PUBLIC_API_URL</code>.</li>
+  <li><strong>CI:</strong> ruff over the repo, Alembic upgrade and downgrade on a scratch database, pytest against a real Redis, dashboard lint, type check and build.</li>
+  <li><strong>Load test:</strong> k6 script compares cache off and on against the demo latency endpoint; results must be reported with VUs, duration and environment.</li>
+</ul>
+
+<h2>10. Configuration</h2>
+<table>
+  <tr><th>Variable</th><th>Required</th><th>Purpose</th></tr>
+  <tr><td><code>DATABASE_URL</code>, <code>REDIS_URL</code></td><td>yes</td><td>storage; SQLite and a local Redis are enough for development</td></tr>
+  <tr><td><code>SECRET_KEY</code>, <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code></td><td>yes</td><td>JWT signing (≥ 32 chars) and first admin account</td></tr>
+  <tr><td><code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_MODEL</code>, <code>OPENAI_FALLBACK_MODEL</code></td><td>for AI features</td><td>any OpenAI-compatible endpoint; Ollama for a free local setup</td></tr>
+  <tr><td><code>RATE_LIMIT_DEFAULT_REQUESTS</code>, <code>RATE_LIMIT_DEFAULT_PERIOD</code>, <code>REDIS_CACHE_TTL</code></td><td>optional</td><td>bucket size, refill period, default TTL</td></tr>
+  <tr><td><code>CORS_ORIGINS</code>, <code>TRUSTED_PROXIES</code>, <code>DEMO_ENDPOINT_ENABLED</code></td><td>production</td><td>browser origins, proxy trust, demo route switch</td></tr>
+  <tr><td><code>EMBEDDING_MODEL</code>, <code>CHROMA_PERSIST_DIR</code> <span class="tag">implemented</span></td><td>for RAG</td><td>local ONNX MiniLM needs no key</td></tr>
+</table>
+<p class="meta">Source of truth for every statement above is the code under <code>app/</code> and <code>site/</code>.</p>
+
+</body>
+</html>

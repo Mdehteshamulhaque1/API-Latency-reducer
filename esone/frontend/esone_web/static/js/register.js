@@ -67,7 +67,7 @@ form.addEventListener("submit", async (event) => {
     try {
         const tokens = await authRegister(username.value.trim(), email.value.trim(), password.value);
         authStoreTokens(tokens);
-        window.location.assign("/account");
+        window.location.assign("/chat");
     }
     catch (err) {
         showAlert(alertHost, "destructive", err instanceof ApiError ? err.message : "Could not reach the authentication server.");

@@ -1,6 +1,16 @@
 """
 Security utilities for JWT, password hashing, and authentication.
+
+Token design
+------------
+* Access token: short-lived (ACCESS_TOKEN_EXPIRE_MINUTES), sent as
+  ``Authorization: Bearer`` on every request.
+* Refresh token: long-lived (REFRESH_TOKEN_EXPIRE_DAYS), only ever sent to
+  ``/auth/refresh`` or ``/auth/logout``.
+* Both carry ``type`` so one can never be used in place of the other, and
+  ``jti`` (a random id) so a token can be revoked on logout.
 """
+import uuid
 from datetime import datetime, timedelta, UTC
 from typing import Optional
 
@@ -25,15 +35,15 @@ class JWTHandler:
     ) -> str:
         """Create a JWT access token."""
         to_encode = data.copy()
-        
+
         if expires_delta:
             expire = datetime.now(UTC) + expires_delta
         else:
             expire = datetime.now(UTC) + timedelta(
                 minutes=settings.access_token_expire_minutes
             )
-        
-        to_encode.update({"exp": expire, "type": "access"})
+
+        to_encode.update({"exp": expire, "type": "access", "jti": uuid.uuid4().hex})
         encoded_jwt = jwt.encode(
             to_encode,
             settings.secret_key,
@@ -48,7 +58,7 @@ class JWTHandler:
         expire = datetime.now(UTC) + timedelta(
             days=settings.refresh_token_expire_days
         )
-        to_encode.update({"exp": expire, "type": "refresh"})
+        to_encode.update({"exp": expire, "type": "refresh", "jti": uuid.uuid4().hex})
         encoded_jwt = jwt.encode(
             to_encode,
             settings.secret_key,
@@ -109,7 +119,8 @@ class PasswordHandler:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """
     Dependency to extract and validate JWT token from request.
-    Returns the payload if valid.
+    Returns the payload if valid. Revocation is enforced by AuthMiddleware,
+    which runs before any route dependency.
     """
     token = credentials.credentials
     try:
@@ -121,16 +132,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         return payload
     except JWTError:
         raise AuthenticationError("Invalid token")
-
-
-async def verify_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """
-    Dependency to verify user has admin role.
-    """
-    role = current_user.get("role")
-    if role != "admin":
-        raise AuthorizationError("Admin access required")
-    return current_user
 
 
 def verify_role(required_roles: list):

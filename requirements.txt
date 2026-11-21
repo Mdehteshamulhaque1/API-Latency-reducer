@@ -7,9 +7,11 @@ pydantic-settings==2.14.2
 
 # Database
 sqlalchemy==2.0.51
+alembic>=1.13,<2
 aiosqlite==0.22.1
 aiomysql==0.3.2
 pymysql==1.2.0
+asyncpg>=0.21.0
 
 # Redis & Caching
 redis==6.4.0
@@ -22,15 +24,17 @@ python-multipart==0.0.30
 # Data Validation
 email-validator==2.3.0
 
-# Logging
+# Logging & Metrics
 python-json-logger==4.1.0
+prometheus-client>=0.20.0
 
-# Task Queue (Celery)
-celery==5.6.3
+# HTTP client (LLM gateway + embeddings)
+httpx==0.28.1
+
+# RAG: local vector store + PDF text extraction
+chromadb>=1.0,<2
+pypdf>=5,<6
 
 # Testing
 pytest==9.1.1
 pytest-asyncio==1.4.0
-httpx==0.28.1
-prometheus-client>=0.20.0
-asyncpg>=0.21.0

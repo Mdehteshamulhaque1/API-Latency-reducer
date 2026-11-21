@@ -78,29 +78,17 @@ export function setupPasswordToggles(root: ParentNode = document): void {
   }
 }
 
-export function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return "expired"
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  const mm = String(m).padStart(2, "0")
-  const ss = String(s).padStart(2, "0")
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
-export function formatDate(exp: number | null): string {
-  if (!exp) return "unknown"
-  return new Date(exp * 1000).toLocaleString()
-}
-
 export function formatIsoDate(iso: string, opts?: Intl.DateTimeFormatOptions): string {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, opts)
+  if (Number.isNaN(d.getTime())) return iso
+  // toLocaleDateString rejects time options (timeStyle, hour...) with a TypeError; use the full formatter then.
+  const wantsTime = Boolean(opts && ("timeStyle" in opts || "hour" in opts || "minute" in opts))
+  return wantsTime ? d.toLocaleString(undefined, opts) : d.toLocaleDateString(undefined, opts)
 }
 
 /** Only allow same-origin relative paths as a post-login destination. */
 export function safeNext(value: string | null): string {
-  if (!value || !/^\/(?![/\\])/.test(value)) return "/account"
+  if (!value || !/^\/(?![/\\])/.test(value)) return "/chat"
   return value
 }
 

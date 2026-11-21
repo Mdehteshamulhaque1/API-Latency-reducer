@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from esone_api import telemetry
 from esone_api.database import get_session
 from esone_api.models import Role, User
 from esone_api.security import TokenError, decode_token
@@ -38,6 +39,7 @@ async def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="User no longer exists")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+    telemetry.mark_end_user(user.id)
     return user
 
 

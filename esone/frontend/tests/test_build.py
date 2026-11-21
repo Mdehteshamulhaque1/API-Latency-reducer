@@ -15,7 +15,7 @@ def test_build_writes_every_page_with_api_url_and_assets(tmp_path):
     out = tmp_path / "dist"
     written = build(out, "https://esone-api.example.com")
 
-    expected = {"index.html", "login.html", "register.html", "account.html", "admin.html"}
+    expected = {"index.html", "login.html", "register.html", "chat.html", "account.html", "admin.html"}
     assert {p.name for p in written} == expected
     assert len(PAGES) == len(expected)
 
@@ -26,7 +26,7 @@ def test_build_writes_every_page_with_api_url_and_assets(tmp_path):
         assert 'src="/static/js/site.js?v=' in html
 
     assert (out / "static" / "css" / "app.css").is_file()
-    for name in ("site", "api", "dom", "login", "register", "account", "admin"):
+    for name in ("site", "api", "dom", "home", "searchbar", "login", "register", "chat", "account", "admin"):
         assert (out / "static" / "js" / f"{name}.js").is_file()
 
 

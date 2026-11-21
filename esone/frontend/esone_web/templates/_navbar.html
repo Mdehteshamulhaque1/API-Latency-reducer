@@ -7,16 +7,14 @@
     </a>
 
     <ul class="navbar-links">
-      <li><a href="/#how">How it works</a></li>
-      <li><a href="/#features">Features</a></li>
-      <li><a href="/#security">Security</a></li>
-      <li><a href="/#faq">FAQ</a></li>
+      <li><a href="/chat">Search</a></li>
     </ul>
 
     <div class="navbar-actions">
       <span class="navbar-group" data-auth="in">
+        <a href="/chat" class="btn btn-subtle btn-sm">{{ icon("activity", "icon-xs") }}Ask</a>
         <a href="/admin" class="btn btn-ghost btn-sm" data-admin-only hidden>{{ icon("users", "icon-xs") }}Users</a>
-        <a href="/account" class="btn btn-subtle btn-sm">{{ icon("user", "icon-xs") }}<span data-role-label>Session</span></a>
+        <a href="/account" class="btn btn-ghost btn-sm">{{ icon("user", "icon-xs") }}<span data-role-label>My account</span></a>
         <button type="button" class="btn btn-ghost btn-sm" data-action="logout">{{ icon("log-out", "icon-xs") }}Sign out</button>
       </span>
       <span class="navbar-group" data-auth="out">
@@ -32,14 +30,12 @@
   </nav>
 
   <div class="mobile-menu container" id="mobile-menu" hidden>
-    <a href="/#how">How it works</a>
-    <a href="/#features">Features</a>
-    <a href="/#security">Security</a>
-    <a href="/#faq">FAQ</a>
+    <a href="/chat">Search</a>
     <div class="mobile-menu-actions">
       <span class="stack-sm" data-auth="in">
+        <a href="/chat" class="btn btn-subtle">{{ icon("activity", "icon-xs") }}Ask</a>
         <a href="/admin" class="btn btn-outline" data-admin-only hidden>{{ icon("users", "icon-xs") }}Users</a>
-        <a href="/account" class="btn btn-subtle">{{ icon("user", "icon-xs") }}Session</a>
+        <a href="/account" class="btn btn-outline">{{ icon("user", "icon-xs") }}My account</a>
         <button type="button" class="btn btn-ghost" data-action="logout">{{ icon("log-out", "icon-xs") }}Sign out</button>
       </span>
       <span class="stack-sm" data-auth="out">

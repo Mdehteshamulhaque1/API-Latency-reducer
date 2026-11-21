@@ -1,64 +1,40 @@
 """
-Structured logging configuration.
+Structured (JSON) logging to stdout.
+
+Every record carries a ``correlation_id`` field so one request can be
+followed across middleware, services, and background tasks. The id is set
+by CorrelationIdMiddleware and passed through ``extra={...}``; records that
+have none get "N/A" so the field is always present for log parsers.
 """
 import logging
 import sys
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 from app.config import settings
 
 
-class CorrelationIdFilter(logging.Filter):
-    """
-    Adds correlation ID from context to log records.
-    """
-    def __init__(self):
-        super().__init__()
-        self._correlation_id = None
-
+class _CorrelationIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.correlation_id = getattr(record, 'correlation_id', 'N/A')
+        if not hasattr(record, "correlation_id"):
+            record.correlation_id = "N/A"
         return True
 
-    @property
-    def correlation_id(self):
-        return self._correlation_id
 
-    @correlation_id.setter
-    def correlation_id(self, value):
-        self._correlation_id = value
+def configure_logging() -> logging.Logger:
+    root = logging.getLogger()
+    root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
 
-
-def configure_logging():
-    """Configure structured logging for the application."""
-    
-    # Create root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, settings.log_level))
-    
-    # Remove existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    
-    # JSON formatter
-    json_formatter = jsonlogger.JsonFormatter(
-        fmt='%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s',
-        timestamp=True,
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s", timestamp=True)
     )
-    
-    # Console handler with JSON logging
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(json_formatter)
-    root_logger.addHandler(console_handler)
-    
-    # Add correlation ID filter
-    correlation_filter = CorrelationIdFilter()
-    root_logger.addFilter(correlation_filter)
-    
-    return root_logger
+    handler.addFilter(_CorrelationIdFilter())
+    root.addHandler(handler)
+    return root
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get logger instance."""
     return logging.getLogger(name)

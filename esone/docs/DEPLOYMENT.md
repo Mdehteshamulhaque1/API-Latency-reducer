@@ -49,6 +49,9 @@ committed, and both the Render build and the Vercel build only run Python.
    | `ESONE_ADMIN_USERNAME` | first admin's username, e.g. `admin` |
    | `ESONE_ADMIN_EMAIL` | first admin's email |
    | `ESONE_ADMIN_PASSWORD` | first admin's password, 8 to 100 characters |
+   | `ESONE_OPTIMIZER_URL` | public URL of the API Optimizer (LLM gateway), e.g. `https://api-optimizer.onrender.com`; leave unset to disable the playground |
+   | `ESONE_OPTIMIZER_USERNAME` | an ordinary account on the Optimizer created for Esone (viewer role is enough) |
+   | `ESONE_OPTIMIZER_PASSWORD` | its password |
 
    `ESONE_ENV=production`, `PYTHON_VERSION=3.11.9` and a generated
    `ESONE_SECRET_KEY` come from the blueprint. Do not reuse the secret across
@@ -69,9 +72,10 @@ health check `/api/v1/health`, and the same variables.
 1. https://vercel.com > **Add New > Project** > import the GitHub repo.
 2. Set **Root Directory** to `frontend`. Leave **Framework Preset** as
    *Other*; `frontend/vercel.json` supplies the install command
-   (`python3 -m pip install -r requirements.txt`), the build command
-   (`python3 build.py --out dist`), the output directory, clean URLs and the
-   security headers.
+   (creates `.venv` with `uv`, falling back to `python3 -m venv`, then installs
+   `requirements.txt` into it; Vercel's system Python refuses `pip install`),
+   the build command (`.venv/bin/python build.py --out dist`), the output
+   directory, clean URLs and the security headers.
 3. Under **Environment Variables** add, for Production and Preview:
 
    | Variable | Value |

@@ -18,8 +18,26 @@ from app.middleware.cache import CacheMiddleware
 from app.utils.logger import configure_logging, get_logger
 from app.utils.redis_client import redis_client
 from app.database.db import init_db, close_db
-from app.api.v1 import auth, health, analytics, rules, demo, chat
-from app.metrics import _registry
+from app.api.v1 import (
+    ai_usage,
+    analytics,
+    assistant,
+    auth,
+    cache,
+    chat,
+    demo,
+    documents,
+    guardrails,
+    health,
+    ingest,
+    pricing,
+    users,
+    proxy,
+    rate_limits,
+    rules,
+    answers,
+)
+from app.core.metrics import _registry
 
 # Configure logging
 configure_logging()
@@ -48,6 +66,11 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down application")
     try:
+        await proxy.close_proxy_client()
+    except Exception as exc:
+        logger.warning("Proxy client shutdown warning: %s", exc)
+
+    try:
         await redis_client.disconnect()
     except Exception as exc:
         logger.warning("Redis shutdown warning: %s", exc)
@@ -66,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Production-grade API optimization system",
+    description="API performance, caching, rate limiting, and LLM gateway",
     lifespan=lifespan,
     debug=settings.debug,
     docs_url="/docs" if settings.debug else None,
@@ -94,6 +117,20 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-Correlation-ID",
+        "X-Response-Time",
+        "X-Cache-Hit",
+        "X-Cache-Stored",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "Retry-After",
+        "X-LLM-Latency-Ms",
+        "X-LLM-Cached",
+        "X-Guardrail-PII-Masked",
+        "X-Guardrail-Injection",
+    ],
 )
 
 
@@ -129,8 +166,20 @@ app.include_router(health.router, prefix=settings.api_v1_prefix)
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(analytics.router, prefix=settings.api_v1_prefix)
 app.include_router(rules.router, prefix=settings.api_v1_prefix)
+app.include_router(cache.router, prefix=settings.api_v1_prefix)
+app.include_router(rate_limits.router, prefix=settings.api_v1_prefix)
+app.include_router(ai_usage.router, prefix=settings.api_v1_prefix)
+app.include_router(pricing.router, prefix=settings.api_v1_prefix)
+app.include_router(users.router, prefix=settings.api_v1_prefix)
+app.include_router(guardrails.router, prefix=settings.api_v1_prefix)
+app.include_router(assistant.router, prefix=settings.api_v1_prefix)
+app.include_router(documents.documents_router, prefix=settings.api_v1_prefix)
+app.include_router(documents.knowledge_router, prefix=settings.api_v1_prefix)
 app.include_router(demo.router, prefix=settings.api_v1_prefix)
 app.include_router(chat.router, prefix=settings.api_v1_prefix)
+app.include_router(answers.router, prefix=settings.api_v1_prefix)
+app.include_router(ingest.router, prefix=settings.api_v1_prefix)
+app.include_router(proxy.router)  # /proxy/<service>/... (no API prefix: the upstream owns the paths)
 app.include_router(chat.router, prefix="/v1", include_in_schema=False)
 
 
@@ -142,7 +191,7 @@ async def root():
         "name": settings.app_name,
         "version": settings.app_version,
         "status": "running",
-        "docs": "/docs",
+        "docs": "/docs" if settings.debug else None,
     }
 
 
@@ -154,7 +203,7 @@ async def metrics():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "app.main:app",
         host=settings.server_host,

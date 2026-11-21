@@ -1,25 +1,13 @@
 """
-Application-wide constants.
+Application-wide constants. Everything configurable lives in app.config.
 """
 
-# API Versions
 API_V1_PREFIX = "/api/v1"
-API_V2_PREFIX = "/api/v2"
 
-# Cache Configuration
-CACHE_TTL_DEFAULT = 3600  # 1 hour
-CACHE_TTL_SHORT = 300    # 5 minutes
-CACHE_TTL_LONG = 86400   # 24 hours
-CACHE_TTL_NEVER = -1     # Never expire
+# Default TTL for cache entries when a rule does not specify one (seconds)
+CACHE_TTL_DEFAULT = 3600
 
-# Rate Limiting
-RATE_LIMIT_ANONYMOUS_REQUESTS = 100
-RATE_LIMIT_ANONYMOUS_PERIOD = 3600
 
-RATE_LIMIT_AUTHENTICATED_REQUESTS = 1000
-RATE_LIMIT_AUTHENTICATED_PERIOD = 3600
-
-# User Roles
 class UserRole:
     """User role constants."""
     ADMIN = "admin"
@@ -28,30 +16,20 @@ class UserRole:
     GUEST = "guest"
 
 
-# Cache Keys
-CACHE_KEY_USER_PREFIX = "user:"
-CACHE_KEY_RULE_PREFIX = "rule:"
-CACHE_KEY_ANALYTICS_PREFIX = "analytics:"
-CACHE_KEY_RATE_LIMIT_PREFIX = "rate_limit:"
-CACHE_KEY_CHAT_PREFIX = "chat:"
+# Request-log attribution. ``api_logs.service`` names the application a row
+# belongs to; this service's own middleware writes SELF_SERVICE, monitored
+# applications (e.g. Esone) ship their rows through POST /ingest/requests.
+SELF_SERVICE = "api-optimizer"
+DIRECTION_INBOUND = "inbound"    # a request the service served
+DIRECTION_OUTBOUND = "outbound"  # a call the service made to another host
+DIRECTIONS = (DIRECTION_INBOUND, DIRECTION_OUTBOUND)
+
+
+# Redis key prefixes
+CACHE_KEY_RULE_PREFIX = "rule:"          # cached HTTP responses
+CACHE_KEY_CHAT_PREFIX = "chat:"          # exact-match LLM responses
 CACHE_KEY_RULES_LIST = "cache:enabled_rules"
 CACHE_RULES_LIST_TTL = 10
 
-# HTTP Headers
-HEADER_X_REQUEST_ID = "X-Request-ID"
+# HTTP headers
 HEADER_X_CORRELATION_ID = "X-Correlation-ID"
-HEADER_X_USER_ID = "X-User-ID"
-
-# Error Messages
-ERROR_UNAUTHORIZED = "Unauthorized"
-ERROR_FORBIDDEN = "Forbidden"
-ERROR_NOT_FOUND = "Resource not found"
-ERROR_RATE_LIMIT_EXCEEDED = "Rate limit exceeded"
-ERROR_INVALID_CREDENTIALS = "Invalid credentials"
-ERROR_USER_ALREADY_EXISTS = "User already exists"
-ERROR_DATABASE_ERROR = "Database error"
-
-# Success Messages
-SUCCESS_CREATED = "Resource created successfully"
-SUCCESS_UPDATED = "Resource updated successfully"
-SUCCESS_DELETED = "Resource deleted successfully"

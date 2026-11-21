@@ -1,11 +1,14 @@
 import type { Config } from "tailwindcss"
 
+/**
+ * Instrument light. Color is state, never decoration:
+ *   signal  = latency / errors / destructive
+ *   relay   = cache hits / healthy / success
+ *   warn    = 4xx, medium severity, paused
+ *   steel   = neutral data series and interactive focus
+ */
 const config: Config = {
-  darkMode: ["class"],
-  content: [
-    "./app/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-  ],
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     container: {
       center: true,
@@ -14,61 +17,62 @@ const config: Config = {
     },
     extend: {
       colors: {
-        ink: "#0A0A0F",
-        surface: "#0D0F16",
-        panel: "#12141D",
-        "panel-2": "#161925",
-        line: "rgba(255,255,255,0.08)",
-        "line-strong": "rgba(255,255,255,0.14)",
-        dim: "#9BA1B0",
-        faint: "#5D6270",
+        frost: "#E9EDF2",
+        paper: "#FFFFFF",
+        ink: "#141B22",
+        graphite: "#5B6672",
+        faint: "#7A8591",
+        dim: "#5B6672",
+        rule: "#D3D9E0",
+        "rule-strong": "#AEB7C2",
+        signal: "#E4572E",
+        relay: "#1F8A5B",
+        warn: "#B7791F",
+        steel: "#2F5D8A",
+        /* Legacy aliases still referenced by a few pages. */
+        panel: "#FFFFFF",
+        surface: "#E9EDF2",
+        line: "#D3D9E0",
+        "line-strong": "#AEB7C2",
+        ok: "#1F8A5B",
         accent: {
-          indigo: "#6366F1",
-          cyan: "#22D3EE",
+          indigo: "#2F5D8A",
+          cyan: "#2F5D8A",
         },
-        ok: "#34D399",
       },
       fontFamily: {
-        sans: ["var(--geist-sans)", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
+      borderRadius: {
+        DEFAULT: "2px",
+        sm: "2px",
+        md: "2px",
+        lg: "3px",
+        xl: "3px",
+        "2xl": "4px",
+      },
       boxShadow: {
-        glow: "0 0 0 1px rgba(99,102,241,0.35), 0 0 28px -6px rgba(99,102,241,0.45)",
-        "glow-cyan": "0 0 32px -8px rgba(34,211,238,0.5)",
-        panel: "0 20px 60px -30px rgba(0,0,0,0.9)",
-        /* Neubrutalist offset shadows — flat, no blur */
-        brutal: "4px 4px 0px 0px #E7E7EA",
-        "brutal-sm": "2px 2px 0px 0px #E7E7EA",
-        "brutal-lg": "6px 6px 0px 0px #E7E7EA",
-        "brutal-accent": "4px 4px 0px 0px #6366F1",
-        "brutal-accent-lg": "6px 6px 0px 0px #6366F1",
-        "brutal-cyan": "4px 4px 0px 0px #22D3EE",
+        none: "none",
+        glow: "none",
+        "glow-cyan": "none",
+        panel: "none",
+        brutal: "none",
+        "brutal-sm": "none",
+        "brutal-lg": "none",
+        "brutal-accent": "none",
+        "brutal-accent-lg": "none",
+        "brutal-cyan": "none",
       },
       backgroundImage: {
-        "accent-gradient":
-          "linear-gradient(135deg, #6366F1 0%, #22D3EE 100%)",
-        "accent-gradient-soft":
-          "linear-gradient(135deg, rgba(99,102,241,0.14) 0%, rgba(34,211,238,0.14) 100%)",
+        "accent-gradient": "none",
+        "accent-gradient-soft": "none",
       },
       animation: {
-        "pulse-dot": "pulse-dot 2s cubic-bezier(0.4,0,0.6,1) infinite",
-        "marquee": "marquee 40s linear infinite",
-        "grid-drift": "grid-drift 60s linear infinite",
-        shimmer: "shimmer 2.2s linear infinite",
+        shimmer: "shimmer 1.6s linear infinite",
       },
       keyframes: {
-        "pulse-dot": {
-          "0%,100%": { boxShadow: "0 0 0 0 rgba(52,211,153,0.5)" },
-          "50%": { boxShadow: "0 0 0 5px rgba(52,211,153,0)" },
-        },
-        marquee: {
-          "0%": { transform: "translateX(0)" },
-          "100%": { transform: "translateX(-50%)" },
-        },
-        "grid-drift": {
-          "0%": { backgroundPosition: "0 0" },
-          "100%": { backgroundPosition: "0 400px" },
-        },
         shimmer: {
           "0%": { backgroundPosition: "-400px 0" },
           "100%": { backgroundPosition: "400px 0" },

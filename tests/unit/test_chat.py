@@ -233,7 +233,7 @@ async def test_chat_completion_logs_usage_and_latency(caplog):
     await service.create_chat_completion(_request(), user_id=7, correlation_id="corr-1")
 
     record = next(
-        item for item in caplog.records if item.message == "OpenAI chat completion succeeded"
+        item for item in caplog.records if item.message == "Chat completion succeeded"
     )
     assert record.prompt_tokens == 11
     assert record.completion_tokens == 4

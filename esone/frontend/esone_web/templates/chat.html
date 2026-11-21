@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Search · Esone{% endblock %}
+
+{% block body %}
+{% include "_navbar.html" %}
+<main class="page results-page">
+  <div class="wash wash-soft" aria-hidden="true"><span class="wash-a"></span><span class="wash-b"></span></div>
+  <div class="container results-container">
+
+    <!-- Search bar -->
+    <form id="search-form" class="search-box search-box-results" role="search" novalidate>
+      <a href="/" class="search-bar-logo" aria-label="Esone home">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="9.5" r="3.5" fill="#fff"/><path d="M10.4 12.5h3.2l1.1 6.5H9.3l1.1-6.5Z" fill="#fff"/></svg></span>
+      </a>
+      <input id="search-input" class="search-input" type="search" name="q" maxlength="2000" autocomplete="off" placeholder="Ask anything…" aria-label="Your question">
+      <button type="button" id="search-clear" class="search-clear" aria-label="Clear" hidden>{{ icon("x", "icon-xs") }}</button>
+      <button type="submit" id="search-submit" class="search-submit" aria-label="Search">
+        <span class="btn-idle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-xs"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+        <span class="btn-pending"><span class="spinner"></span></span>
+      </button>
+    </form>
+
+    <div id="search-alert" class="mb-6" hidden></div>
+
+    <div class="results-grid">
+      <section class="results-main" aria-live="polite">
+        <!-- Status line: "Instant answer · 0.3 s" or "Researched fresh · 2.1 s" -->
+        <p id="result-status" class="result-status" hidden></p>
+
+        <!-- Searching -->
+        <div id="result-pending" class="result-pending" hidden>
+          <span class="spinner"></span><span id="result-pending-text">Looking it up…</span>
+        </div>
+
+        <!-- Answer -->
+        <article id="result-answer" class="card result-answer" hidden>
+          <div class="card-strip card-strip-row"><span class="font-medium">Answer</span><span id="result-meta" class="result-meta"></span></div>
+          <div class="card-content">
+            <p id="result-text" class="result-text"></p>
+            <div id="result-tags" class="tag-row"></div>
+          </div>
+        </article>
+
+        <!-- Nothing asked yet -->
+        <div id="result-empty" class="result-empty">
+          <span class="icon-box icon-box-brand">{{ icon("activity", "icon-sm") }}</span>
+          <p class="font-medium text-ink">Type a question above</p>
+        </div>
+
+        <!-- History: below the answer, full width -->
+        <div class="card recent-card">
+          <div class="card-header card-header-row">
+            <div>
+              <h3 class="card-title">History</h3>
+              <p class="card-desc">Click one to see its answer again.</p>
+            </div>
+            <button type="button" id="clear-btn" class="btn btn-ghost btn-sm" disabled>{{ icon("x", "icon-xxs") }}Clear</button>
+          </div>
+          <div class="card-content">
+            <ul id="recent-list" class="recent-list"></ul>
+            <p id="recent-empty" class="text-sm text-muted">Nothing yet.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+{% include "_footer.html" %}
+{% endblock %}
+
+{% block scripts %}<script type="module" src="{{ url_for('static', path='js/chat.js') }}?v={{ asset_version }}"></script>{% endblock %}

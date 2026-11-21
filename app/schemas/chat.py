@@ -43,3 +43,6 @@ class ChatResponse(BaseModel):
     latency_ms: float = Field(default=0.0, ge=0)
     cached: bool = False
     created: int | None = None
+    #: Derived from the configured pricing table; an estimate, not a bill.
+    #: Always 0 for cache hits because no provider call was made.
+    estimated_cost_usd: float = Field(default=0.0, ge=0)

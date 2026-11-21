@@ -59,7 +59,10 @@ async function readErrorMessage(res: Response): Promise<string> {
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
-  const url = new URL(path, API_BASE_URL)
+  // Concatenate rather than resolve: the base may carry a path (for example
+  // the API Optimizer proxy, http://host/proxy/esone), which `new URL(path,
+  // base)` would discard for an absolute path like /api/v1/chat.
+  const url = new URL(`${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`)
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(init.headers ?? {}),
@@ -240,14 +243,6 @@ export function authGetClaims(): TokenClaims | null {
   return payload ? toClaims(payload) : null
 }
 
-/** Decoded claims of the stored refresh token, or null when absent. */
-export function authGetRefreshClaims(): TokenClaims | null {
-  const token = localStorage.getItem("refresh_token")
-  if (!token) return null
-  const payload = decodeTokenPayload(token)
-  return payload ? toClaims(payload) : null
-}
-
 export function authGetRole(): string | null {
   const token = authGetAccessToken()
   if (!token) return null
@@ -317,15 +312,133 @@ export async function apiAdminUpdateUser(id: number, patch: AdminUserPatch): Pro
   return res.json() as Promise<UserProfile>
 }
 
-export interface HealthStatus {
-  status: string
-  database: string
-  version: string
+// ----- chat: questions answered by the API Optimizer (backend/esone_api/routers/chat.py) -----
+
+export interface AnswerSource {
+  title: string
+  url: string
+  /** Provider the page came from: wikipedia, duckduckgo, wikidata or web (null for older rows). */
+  source: string | null
 }
 
-/** GET /api/v1/health (public) */
-export async function apiHealth(): Promise<HealthStatus> {
-  const res = await request("/api/v1/health", { method: "GET" })
-  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
-  return res.json() as Promise<HealthStatus>
+export interface AnswerResponse {
+  question: string
+  answer: string
+  answered_by: "cache" | "model" | "crawler"
+  cached: boolean
+  similarity: number | null
+  matched_question: string | null
+  match_method: string | null
+  sources: AnswerSource[]
+  latency_ms: number
+  crawl_ms: number | null
+  compose_method: string | null
+  embedding_used: boolean
+  cache_lookup_ms: number
+  llm_ms: number
+  total_tokens: number
+  estimated_cost_usd: number
+  served_model: string | null
+  /** False when the question carried personal data: answered, but kept out of the shared cache. */
+  cacheable: boolean
+}
+
+/** POST /api/v1/chat (signed in). Esone forwards the question to the Optimizer's answers pipeline. */
+export async function apiAsk(question: string): Promise<AnswerResponse> {
+  const res = await authed("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) })
+  return res.json() as Promise<AnswerResponse>
+}
+
+/** One earlier question of the signed-in user (backend/esone_api/routers/chat.py). */
+export interface ChatHistoryItem {
+  id: number
+  created_at: string
+  question: string
+  answer: string
+  /** ok | error */
+  status: string
+  error_message: string | null
+  answered_by: "cache" | "model" | "crawler"
+  cached: boolean
+  /** exact | semantic | miss | none */
+  cache_type: string
+  match_method: string | null
+  similarity: number | null
+  compose_method: string | null
+  sources: AnswerSource[]
+  sources_count: number
+  latency_ms: number
+  cache_lookup_ms: number
+  crawl_ms: number | null
+  llm_ms: number
+  total_tokens: number
+  estimated_cost_usd: number
+  served_model: string | null
+  correlation_id: string | null
+}
+
+export interface NameCount {
+  name: string
+  count: number
+}
+
+export interface ChatLatencyPoint {
+  at: string
+  latency_ms: number
+  cached: boolean
+}
+
+/** The signed-in user's own chat activity (backend/esone_api/routers/chat.py, GET /chat/stats). */
+export interface ChatStats {
+  hours: number
+  total_queries: number
+  answered: number
+  errors: number
+  cache_hits: number
+  exact_hits: number
+  semantic_hits: number
+  misses: number
+  cache_hit_rate: number
+  avg_latency_ms: number
+  avg_latency_cached_ms: number
+  avg_latency_crawled_ms: number
+  p50_latency_ms: number
+  p95_latency_ms: number
+  p99_latency_ms: number
+  total_tokens: number
+  estimated_cost_usd: number
+  sources_used: number
+  by_source: NameCount[]
+  by_model: NameCount[]
+  by_error: NameCount[]
+  latency_series: ChatLatencyPoint[]
+  recent: ChatHistoryItem[]
+  recent_errors: ChatHistoryItem[]
+  /** INR charged to this user: tokens of answers not served from the cache. */
+  billable_tokens: number
+  cost_inr: number
+}
+
+/** GET /api/v1/chat/stats (signed in): only the caller's own rows. */
+export async function apiChatStats(hours = 24 * 30): Promise<ChatStats> {
+  const res = await authed(`/api/v1/chat/stats?hours=${hours}`, { method: "GET" })
+  return res.json() as Promise<ChatStats>
+}
+
+export interface ChatHistory {
+  /** Oldest first, so the list reads like the conversation. */
+  items: ChatHistoryItem[]
+  total: number
+}
+
+/** GET /api/v1/chat/history (signed in). */
+export async function apiChatHistory(limit = 50): Promise<ChatHistory> {
+  const res = await authed(`/api/v1/chat/history?limit=${limit}`, { method: "GET" })
+  return res.json() as Promise<ChatHistory>
+}
+
+/** DELETE /api/v1/chat/history (signed in): forget the user's earlier questions. */
+export async function apiChatHistoryClear(): Promise<{ deleted: number }> {
+  const res = await authed("/api/v1/chat/history", { method: "DELETE" })
+  return res.json() as Promise<{ deleted: number }>
 }

@@ -1,544 +1,426 @@
 """
-Analytics service for tracking and computing API metrics.
+Analytics over the request log (``api_logs``).
 
-OPTIMIZATIONS:
-- Uses SQL aggregations (GROUP BY, COUNT, AVG, SUM) for most computations
-- Loads minimal data from database for percentile calculations
-- Significantly reduces memory usage for large datasets
+Every number is computed with SQL aggregates over the rows in the window;
+percentiles use the nearest-rank definition ceil(N * p / 100) through
+window functions (supported by SQLite 3.25+, MySQL 8, PostgreSQL).
+Time series are bucketed in Python from a minimal (timestamp, latency,
+status) projection.
 """
+import json
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+import math
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Sequence
 
-from sqlalchemy import (
-    func,
-    desc,
-    case,
-)
+from sqlalchemy import case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
-from app.models import APILog, Analytics
+from app.core.constants import DIRECTION_INBOUND, DIRECTION_OUTBOUND, SELF_SERVICE
+from app.models import APILog
 from app.schemas.analytics import (
     AnalyticsSummary,
     BenchmarkReport,
-    LatencyPoint,
     LatencyDistributionPoint,
+    LatencyPoint,
+    MonitoredService,
     OptimizationSuggestion,
     RecentRequest,
 )
+from app.schemas.ingest import IngestedRequest
 
 logger = logging.getLogger(__name__)
 
+BENCHMARK_REPORT_FILE = Path("logs") / "benchmark_reports" / "latest.json"
+
 
 def _utcnow() -> datetime:
-    """Naive UTC now — matches the values read back from the database."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """Timezone-aware UTC now.
+
+    Must be aware: asyncpg interprets a naive datetime as *local* time when
+    binding it to a ``timestamptz`` column or parameter, which would shift
+    inserted rows and query windows by the server's UTC offset. SQLite
+    stores the UTC wall-clock either way.
+    """
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Make a datetime aware (naive values are taken as UTC)."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _nearest_rank(values: List[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    return round(ordered[max(0, math.ceil(len(ordered) * percentile / 100) - 1)], 2)
+
+
+def _bucket_size(hours: int) -> timedelta:
+    return timedelta(minutes=max(5, int(hours * 60 / max(1, min(12, hours)))))
 
 
 class AnalyticsService:
-    """
-    Tracks API requests and computes analytics for dashboards.
-    Uses database-side aggregations to minimize memory usage.
-    """
-
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, end_user: Optional[str] = None):
         self.session = session
+        #: When set, every read covers only this end user's rows ("esone:7").
+        self.end_user = end_user
 
-    async def log_request(
-        self,
-        method: str,
-        endpoint: str,
-        path: str,
-        status_code: int,
-        response_time_ms: float,
-        client_ip: str,
-        correlation_id: str,
-        user_id: Optional[int] = None,
-        cache_hit: bool = False,
-        cache_key: Optional[str] = None,
-        request_size_bytes: int = 0,
-        response_size_bytes: int = 0,
-        query_params: Optional[str] = None,
-        error_message: Optional[str] = None,
-    ) -> APILog:
-        """Log an API request."""
-        api_log = APILog(
-            user_id=user_id,
-            method=method,
-            endpoint=endpoint,
-            path=path,
-            status_code=status_code,
-            response_time_ms=response_time_ms,
-            cache_hit=cache_hit,
-            cache_key=cache_key,
-            client_ip=client_ip,
-            correlation_id=correlation_id,
-            request_size_bytes=request_size_bytes,
-            response_size_bytes=response_size_bytes,
-            query_params=query_params,
-            error_message=error_message,
-        )
+    # ------------------------------------------------------------ writes
 
-        self.session.add(api_log)
-        await self._update_hourly_analytics(
-            user_id=user_id,
-            status_code=status_code,
-            response_time_ms=response_time_ms,
-            cache_hit=cache_hit,
-            request_size_bytes=request_size_bytes,
-            response_size_bytes=response_size_bytes,
-        )
+    async def log_request(self, **fields) -> APILog:
+        """Insert one request row (called from the metrics background task)."""
+        row = APILog(**fields)
+        self.session.add(row)
         await self.session.commit()
+        return row
 
-        await self.session.refresh(api_log)
-        return api_log
+    async def log_requests_batch(self, records: Sequence[IngestedRequest], user_id: Optional[int] = None) -> int:
+        """Insert rows shipped by a monitored service (POST /ingest/requests).
 
-    async def _update_hourly_analytics(
+        ``user_id`` is the service account that shipped the batch. It is kept
+        so the service's LLM calls and guardrail events (recorded under that
+        account) can be attributed to it; the rows themselves are analysed by
+        every dashboard user through the ``service`` filter.
+        """
+        now = _utcnow()
+        rows = []
+        for record in records:
+            occurred = _as_utc(record.occurred_at).astimezone(timezone.utc) if record.occurred_at else None
+            rows.append(
+                APILog(
+                    user_id=user_id,
+                    service=record.service,
+                    direction=record.direction,
+                    upstream_host=record.upstream_host,
+                    end_user=record.end_user,
+                    method=record.method,
+                    endpoint=record.endpoint,
+                    path=record.path or record.endpoint,
+                    status_code=record.status_code,
+                    response_time_ms=record.response_time_ms,
+                    cache_hit=record.cache_hit,
+                    client_ip=record.client_ip,
+                    correlation_id=record.correlation_id,
+                    request_size_bytes=record.request_size_bytes,
+                    response_size_bytes=record.response_size_bytes,
+                    query_params=record.query_params,
+                    error_message=record.error_message,
+                    created_at=occurred or now,
+                    updated_at=occurred or now,
+                )
+            )
+        self.session.add_all(rows)
+        await self.session.commit()
+        return len(rows)
+
+    # ------------------------------------------------------------- reads
+
+    def _filters(
         self,
         user_id: Optional[int],
-        status_code: int,
-        response_time_ms: float,
-        cache_hit: bool,
-        request_size_bytes: int,
-        response_size_bytes: int,
-    ) -> None:
-        """Update or create an hourly analytics aggregate record."""
-        current_hour = _utcnow().replace(minute=0, second=0, microsecond=0)
-        period_key = f"hourly:{current_hour.isoformat(timespec='minutes')}"
+        since: datetime,
+        service: Optional[str] = None,
+        direction: Optional[str] = None,
+    ) -> list:
+        """Row filters for a window.
 
-        result = await self.session.execute(
-            select(Analytics).where(
-                Analytics.period == period_key,
-                Analytics.user_id == user_id,
+        With ``service`` set, the rows of that application are analysed for
+        everyone (they are shared telemetry); without it the caller's own
+        requests are returned, as before.
+        """
+        filters = [APILog.created_at >= since]
+        if self.end_user:
+            filters.append(APILog.end_user == self.end_user)
+        elif service:
+            filters.append(APILog.service == service)
+        elif user_id is not None:
+            filters.append(APILog.user_id == user_id)
+        if direction:
+            filters.append(APILog.direction == direction)
+        return filters
+
+    async def service_account_id(self, service: str) -> Optional[int]:
+        """The gateway account a monitored service ships its rows with (newest wins)."""
+        if not service or service == SELF_SERVICE:
+            return None
+        return (
+            await self.session.execute(
+                select(APILog.user_id)
+                .where(APILog.service == service, APILog.user_id.is_not(None))
+                .order_by(desc(APILog.id))
+                .limit(1)
             )
-        )
-        analytics = result.scalar_one_or_none()
+        ).scalar_one_or_none()
 
-        if not analytics:
-            analytics = Analytics(
-                period=period_key,
-                user_id=user_id,
-                total_requests=0,
-                total_errors=0,
-                cache_hits=0,
-                cache_misses=0,
-                avg_response_time_ms=0.0,
-                min_response_time_ms=0.0,
-                max_response_time_ms=0.0,
-                total_bytes_sent=0,
-                total_bytes_received=0,
+    async def get_services(self, hours: int = 24) -> List[MonitoredService]:
+        """Every service with rows in the window, this one first."""
+        since = _utcnow() - timedelta(hours=hours)
+        rows = (
+            await self.session.execute(
+                select(
+                    APILog.service,
+                    func.count(APILog.id),
+                    func.sum(case((APILog.direction == DIRECTION_INBOUND, 1), else_=0)),
+                    func.sum(case((APILog.direction == DIRECTION_OUTBOUND, 1), else_=0)),
+                    func.sum(case((APILog.status_code >= 400, 1), else_=0)),
+                    func.avg(APILog.response_time_ms),
+                    func.max(APILog.created_at),
+                )
+                .where(APILog.created_at >= since)
+                .group_by(APILog.service)
             )
-            self.session.add(analytics)
-            await self.session.flush()
-
-        previous_requests = analytics.total_requests
-        analytics.total_requests += 1
-        analytics.total_errors += 1 if status_code >= 400 else 0
-        if cache_hit:
-            analytics.cache_hits += 1
-        else:
-            analytics.cache_misses += 1
-
-        if previous_requests == 0:
-            analytics.avg_response_time_ms = response_time_ms
-            analytics.min_response_time_ms = response_time_ms
-            analytics.max_response_time_ms = response_time_ms
-        else:
-            analytics.avg_response_time_ms = (
-                (analytics.avg_response_time_ms * previous_requests) + response_time_ms
-            ) / analytics.total_requests
-            analytics.min_response_time_ms = min(analytics.min_response_time_ms, response_time_ms)
-            analytics.max_response_time_ms = max(analytics.max_response_time_ms, response_time_ms)
-
-        analytics.total_bytes_received += request_size_bytes
-        analytics.total_bytes_sent += response_size_bytes
+        ).all()
+        services = []
+        for name, total, inbound, outbound, errors, avg_ms, last_seen in rows:
+            is_self = name == SELF_SERVICE
+            services.append(
+                MonitoredService(
+                    service=name,
+                    is_self=is_self,
+                    requests=int(total or 0),
+                    inbound=int(inbound or 0),
+                    outbound=int(outbound or 0),
+                    errors=int(errors or 0),
+                    avg_response_time_ms=round(float(avg_ms or 0.0), 2),
+                    last_seen=last_seen,
+                    account_user_id=None if is_self else await self.service_account_id(name),
+                )
+            )
+        return sorted(services, key=lambda item: (not item.is_self, item.service))
 
     async def get_analytics_summary(
         self,
         user_id: Optional[int] = None,
         hours: int = 24,
+        service: Optional[str] = None,
+        direction: Optional[str] = None,
     ) -> AnalyticsSummary:
-        """
-        Get aggregated analytics summary using database-side aggregations.
-        Significantly reduces memory usage compared to loading all logs.
-        """
         since = _utcnow() - timedelta(hours=hours)
+        filters = self._filters(user_id, since, service, direction)
 
-        # Fetch aggregate statistics using SQL
-        # This computes: total requests, total errors, total cache hits
-        agg_query = select(
-            func.count(APILog.id).label("total_requests"),
-            func.sum(
-                case((APILog.status_code >= 400, 1), else_=0)
-            ).label("total_errors"),
-            func.sum(
-                case((APILog.cache_hit.is_(True), 1), else_=0)
-            ).label("total_cache_hits"),
-            func.avg(APILog.response_time_ms).label("avg_response_time"),
-            func.max(APILog.response_time_ms).label("max_response_time"),
-            func.min(APILog.response_time_ms).label("min_response_time"),
-        ).where(APILog.created_at >= since)
-        
-        if user_id is not None:
-            agg_query = agg_query.where(APILog.user_id == user_id)
+        totals = (
+            await self.session.execute(
+                select(
+                    func.count(APILog.id),
+                    func.sum(case((APILog.status_code >= 400, 1), else_=0)),
+                    func.sum(case((APILog.cache_hit.is_(True), 1), else_=0)),
+                    func.avg(APILog.response_time_ms),
+                    func.max(APILog.response_time_ms),
+                    func.sum(case((APILog.status_code == 429, 1), else_=0)),
+                ).where(*filters)
+            )
+        ).one()
+        total = int(totals[0] or 0)
+        if total == 0:
+            return self._empty_summary()
+        errors = int(totals[1] or 0)
+        hits = int(totals[2] or 0)
+        avg_ms = float(totals[3] or 0.0)
+        max_ms = float(totals[4] or 0.0)
+        rate_limited = int(totals[5] or 0)
 
-        agg_result = await self.session.execute(agg_query)
-        agg_row = agg_result.one_or_none()
-
-        # Extract aggregate values
-        total_requests = agg_row[0] or 0
-        total_errors = agg_row[1] or 0
-        total_cache_hits = agg_row[2] or 0
-        avg_response_time = float(agg_row[3] or 0.0)
-        max_response_time = float(agg_row[4] or 0.0)
-
-        if total_requests == 0:
-            return self._empty_analytics_summary()
-
-        total_cache_misses = total_requests - total_cache_hits
-        cache_hit_rate = (total_cache_hits / total_requests) * 100
-
-        # Fetch top endpoints by request count with aggregated stats
-        top_endpoints = await self._get_top_endpoints_by_count(user_id, since, limit=10)
-
-        # Get top slow endpoints (by p95 latency)
-        slow_endpoint_ranking = await self._get_top_slow_endpoints_optimized(user_id, since, limit=10)
-
-        # Fetch recent requests (last 10 for dashboard)
-        recent_requests = await self._get_recent_requests(user_id, since, limit=10)
-
-        # Compute overall percentiles using the database when available
-        overall_p95 = await self._get_percentile(user_id, since, 95)
-        overall_p99 = await self._get_percentile(user_id, since, 99)
-
-        # Find slowest endpoint
-        slowest_endpoint = await self._get_slowest_endpoint(user_id, since)
-
-        # Build series and distribution data
-        latency_series = await self._build_latency_series_optimized(user_id, since, hours)
-        latency_distribution = await self._build_latency_distribution_optimized(user_id, since, hours)
-
-        # Determine slow endpoints
-        slow_endpoints = [
-            ep for ep in top_endpoints
-            if ep["avg_time"] >= 300 or ep["errors"] > 0
-        ]
-        if not slow_endpoints and top_endpoints:
-            slow_endpoints = top_endpoints[:3]
-
-        # Build optimization suggestions
-        optimization_suggestions = self._build_suggestions(
-            total_requests=total_requests,
-            total_errors=total_errors,
-            cache_hit_rate=cache_hit_rate,
-            avg_response_time_ms=avg_response_time,
-            slowest_response_time_ms=max_response_time,
-            slow_endpoints=slow_endpoints,
-            slow_endpoint_ranking=slow_endpoint_ranking,
+        top_endpoints = await self._top_endpoints(filters, limit=10)
+        ranking = await self.get_top_slow_endpoints(
+            user_id=user_id, hours=hours, limit=10, since=since, service=service, direction=direction
         )
+        slowest = await self._slowest_endpoint(filters)
+        p50, p95, p99 = await self._overall_percentiles(filters, (50, 95, 99))
+        series, distribution = await self._time_series(filters, since, hours)
 
-        # Build benchmark report
-        benchmark = await self._build_benchmark_report_optimized(user_id, since)
+        slow_endpoints = [e for e in top_endpoints if e["avg_time"] >= 300 or e["errors"] > 0] or top_endpoints[:3]
+        cache_hit_rate = hits / total * 100
 
         return AnalyticsSummary(
-            total_requests=total_requests,
-            total_errors=total_errors,
+            total_requests=total,
+            total_errors=errors,
+            rate_limited_requests=rate_limited,
             cache_hit_rate=cache_hit_rate,
-            avg_response_time_ms=avg_response_time,
-            slowest_endpoint=slowest_endpoint["endpoint"] if slowest_endpoint else None,
-            slowest_response_time_ms=max_response_time,
+            cache_miss_rate=(total - hits) / total * 100,
+            avg_response_time_ms=avg_ms,
+            slowest_endpoint=slowest,
+            slowest_response_time_ms=max_ms,
             top_endpoints=top_endpoints,
-            slow_endpoint_ranking=slow_endpoint_ranking,
-            overall_p95_response_time_ms=overall_p95,
-            overall_p99_response_time_ms=overall_p99,
-            error_rate=(total_errors / total_requests * 100) if total_requests else 0.0,
-            request_rate_per_minute=round(total_requests / max(hours * 60, 1), 2),
-            cache_miss_rate=(total_cache_misses / total_requests * 100) if total_requests else 0.0,
-            recent_requests=recent_requests,
-            latency_series=latency_series,
-            latency_distribution=latency_distribution,
+            slow_endpoint_ranking=ranking,
+            overall_p50_response_time_ms=p50,
+            overall_p95_response_time_ms=p95,
+            overall_p99_response_time_ms=p99,
+            error_rate=errors / total * 100,
+            request_rate_per_minute=round(total / max(hours * 60, 1), 2),
+            recent_requests=await self._recent_requests(filters, limit=10),
+            latency_series=series,
+            latency_distribution=distribution,
             slow_endpoints=slow_endpoints,
-            optimization_suggestions=optimization_suggestions,
-            benchmark=benchmark,
+            optimization_suggestions=self._suggestions(total, errors, cache_hit_rate, avg_ms, max_ms, slow_endpoints, ranking),
+            benchmark=await self.get_endpoint_benchmark(
+                user_id=user_id, hours=hours, since=since, service=service, direction=direction
+            ),
         )
 
-    async def _get_top_endpoints_by_count(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        limit: int = 10,
-    ) -> List[dict]:
-        """
-        Get top endpoints by request count with aggregated stats using SQL.
-        Much more efficient than loading all logs.
-        """
-        query = select(
-            APILog.endpoint,
-            func.count(APILog.id).label("count"),
-            func.avg(APILog.response_time_ms).label("avg_time"),
-            func.sum(
-                case((APILog.status_code >= 400, 1), else_=0)
-            ).label("errors"),
-            func.sum(
-                case((APILog.cache_hit.is_(True), 1), else_=0)
-            ).label("cache_hits"),
-        )
-
-        if since:
-            query = query.where(APILog.created_at >= since)
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        query = (
-            query.group_by(APILog.endpoint)
-            .order_by(desc("count"))
-            .limit(limit)
-        )
-
-        result = await self.session.execute(query)
-        rows = result.all()
-
-        top_endpoints = []
-        for row in rows:
-            endpoint, count, avg_time, errors, cache_hits = row
+    async def _top_endpoints(self, filters: list, limit: int) -> List[dict]:
+        rows = (
+            await self.session.execute(
+                select(
+                    APILog.endpoint,
+                    func.count(APILog.id),
+                    func.avg(APILog.response_time_ms),
+                    func.sum(case((APILog.status_code >= 400, 1), else_=0)),
+                    func.sum(case((APILog.cache_hit.is_(True), 1), else_=0)),
+                )
+                .where(*filters)
+                .group_by(APILog.endpoint)
+                .order_by(desc(func.count(APILog.id)))
+                .limit(limit)
+            )
+        ).all()
+        result = []
+        for endpoint, count, avg_ms, errors, hits in rows:
             count = int(count or 0)
-            errors = int(errors or 0)
-            cache_hits = int(cache_hits or 0)
-            avg_time = float(avg_time or 0.0)
-
-            top_endpoints.append(
+            result.append(
                 {
                     "endpoint": endpoint,
                     "count": count,
-                    "avg_time": round(avg_time, 2),
-                    "errors": errors,
-                    "cache_hit_rate": round((cache_hits / count * 100) if count > 0 else 0.0, 2),
+                    "avg_time": round(float(avg_ms or 0.0), 2),
+                    "errors": int(errors or 0),
+                    "cache_hit_rate": round(int(hits or 0) / count * 100, 2) if count else 0.0,
                 }
             )
+        return result
 
-        return top_endpoints
-
-    async def _get_top_slow_endpoints_optimized(
+    async def get_top_slow_endpoints(
         self,
         user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
+        hours: int = 24,
         limit: int = 10,
+        since: Optional[datetime] = None,
+        service: Optional[str] = None,
+        direction: Optional[str] = None,
     ) -> List[dict]:
-        """
-        Get top endpoints ranked by p95 latency.
-        Fetches response times per endpoint for percentile calculation.
-        """
-        # First, get endpoints with their basic aggregates
-        query = select(
-            APILog.endpoint,
-            func.count(APILog.id).label("count"),
-            func.avg(APILog.response_time_ms).label("avg_time"),
-            func.sum(
-                case((APILog.status_code >= 400, 1), else_=0)
-            ).label("errors"),
-            func.sum(
-                case((APILog.cache_hit.is_(True), 1), else_=0)
-            ).label("cache_hits"),
-        )
-
-        if since:
-            query = query.where(APILog.created_at >= since)
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        query = (
-            query.group_by(APILog.endpoint)
-            .order_by(desc("count"))
-            .limit(limit * 2)  # Get extra endpoints to rank by p95
-        )
-
-        result = await self.session.execute(query)
-        endpoint_rows = result.all()
-
-        # For each endpoint, fetch response times to compute percentiles
-        ranking = []
-        for row in endpoint_rows:
-            endpoint, count, avg_time, errors, cache_hits = row
-            count = int(count or 0)
-            errors = int(errors or 0)
-            cache_hits = int(cache_hits or 0)
-            avg_time = float(avg_time or 0.0)
-
-            p95 = await self._get_percentile_for_endpoint(endpoint, user_id, since, 95)
-            p99 = await self._get_percentile_for_endpoint(endpoint, user_id, since, 99)
-
-            ranking.append(
-                {
-                    "endpoint": endpoint,
-                    "count": count,
-                    "avg_time": round(avg_time, 2),
-                    "p95_time": p95,
-                    "p99_time": p99,
-                    "errors": errors,
-                    "cache_hit_rate": round((cache_hits / count * 100) if count > 0 else 0.0, 2),
-                    "error_rate": round((errors / count * 100) if count > 0 else 0.0, 2),
-                }
-            )
-
-        # Sort by p95 time descending and limit
-        return sorted(ranking, key=lambda x: x["p95_time"], reverse=True)[:limit]
-
-    async def _get_recent_requests(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        limit: int = 10,
-    ) -> List[RecentRequest]:
-        """Get recent requests for display on dashboard."""
-        query = select(APILog).where(APILog.created_at >= (since or _utcnow() - timedelta(hours=24)))
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        query = query.order_by(desc(APILog.created_at)).limit(limit)
-
-        result = await self.session.execute(query)
-        logs = result.scalars().all()
-
-        return [
-            RecentRequest(
-                endpoint=log.endpoint,
-                method=log.method,
-                status_code=log.status_code,
-                response_time_ms=log.response_time_ms,
-                cache_hit=log.cache_hit,
-                created_at=log.created_at,
-            )
-            for log in logs
+        """Endpoints ranked by p95 latency, with their p99, errors, and cache ratio."""
+        since = since or _utcnow() - timedelta(hours=hours)
+        filters = self._filters(user_id, since, service, direction)
+        candidates = await self._top_endpoints(filters, limit=limit * 2)
+        percentiles = await self._endpoint_percentiles(filters, [c["endpoint"] for c in candidates], (95, 99))
+        ranking = [
+            {
+                **item,
+                "p95_time": percentiles[item["endpoint"]][95],
+                "p99_time": percentiles[item["endpoint"]][99],
+                "error_rate": round(item["errors"] / item["count"] * 100, 2) if item["count"] else 0.0,
+            }
+            for item in candidates
         ]
+        return sorted(ranking, key=lambda r: r["p95_time"], reverse=True)[:limit]
 
-    async def _fetch_response_times(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-    ) -> List[float]:
-        """
-        Fetch only response_time_ms values (minimal data) for percentile calculations.
-        Much more efficient than loading entire APILog objects.
-        """
-        query = select(APILog.response_time_ms).where(
-            APILog.created_at >= (since or _utcnow() - timedelta(hours=24))
+    async def _overall_percentiles(self, filters: list, percentiles: Iterable[int]) -> List[float]:
+        wanted = list(percentiles)
+        ranked = (
+            select(
+                APILog.response_time_ms,
+                func.row_number().over(order_by=APILog.response_time_ms).label("rn"),
+                func.count().over().label("total"),
+            )
+            .where(*filters)
+            .subquery()
         )
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        result = await self.session.execute(query)
-        return [float(row[0]) for row in result.all()]
-
-    async def _get_percentile(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        percentile: float = 95,
-    ) -> float:
-        """
-        Compute a percentile for overall response times.
-        Uses a SQL window-based percentile query when supported; otherwise falls back to a minimal Python pass.
-        """
-        if not since:
-            since = _utcnow() - timedelta(hours=24)
-
-        filters = [APILog.created_at >= since]
-        if user_id is not None:
-            filters.append(APILog.user_id == user_id)
-
-        try:
-            return await self._get_percentile_via_sql(
-                filters=filters,
-                percentile=percentile,
+        conditions = [ranked.c.rn == func.ceil(ranked.c.total * p / 100.0) for p in wanted]
+        rows = (
+            await self.session.execute(
+                select(ranked.c.response_time_ms, ranked.c.rn, ranked.c.total).where(or_(*conditions))
             )
-        except Exception:
-            response_times = await self._fetch_response_times(user_id, since)
-            return self._percentile(response_times, percentile)
+        ).all()
+        results = {p: 0.0 for p in wanted}
+        for latency, rank, total in rows:
+            for p in wanted:
+                if int(rank) == math.ceil(int(total) * p / 100.0):
+                    results[p] = round(float(latency), 2)
+        return [results[p] for p in wanted]
 
-    async def _get_percentile_for_endpoint(
-        self,
-        endpoint: str,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        percentile: float = 95,
-    ) -> float:
-        """
-        Compute a percentile for endpoint-specific response times.
-        """
-        if not since:
-            since = _utcnow() - timedelta(hours=24)
-
-        filters = [APILog.endpoint == endpoint, APILog.created_at >= since]
-        if user_id is not None:
-            filters.append(APILog.user_id == user_id)
-
-        try:
-            return await self._get_percentile_via_sql(
-                filters=filters,
-                percentile=percentile,
+    async def _endpoint_percentiles(
+        self, filters: list, endpoints: List[str], percentiles: Iterable[int]
+    ) -> Dict[str, Dict[int, float]]:
+        """Several percentiles for several endpoints in one windowed query."""
+        wanted = list(percentiles)
+        results = {endpoint: {p: 0.0 for p in wanted} for endpoint in endpoints}
+        if not endpoints:
+            return results
+        ranked = (
+            select(
+                APILog.endpoint,
+                APILog.response_time_ms,
+                func.row_number().over(partition_by=APILog.endpoint, order_by=APILog.response_time_ms).label("rn"),
+                func.count().over(partition_by=APILog.endpoint).label("total"),
             )
-        except Exception:
-            query = select(APILog.response_time_ms).where(
-                APILog.endpoint == endpoint,
-                APILog.created_at >= since,
-            )
-            if user_id is not None:
-                query = query.where(APILog.user_id == user_id)
-            result = await self.session.execute(query)
-            times = [float(row[0]) for row in result.all()]
-            return self._percentile(times, percentile)
-
-    async def _get_percentile_via_sql(
-        self,
-        filters: List,
-        percentile: float,
-    ) -> float:
-        """
-        Attempt to compute a percentile using SQL window functions.
-        """
-        query = select(
-            APILog.response_time_ms,
-            func.row_number().over(order_by=APILog.response_time_ms).label("rn"),
-            func.count().over().label("total_count"),
-        ).where(*filters)
-
-        subquery = query.subquery()
-        target_rank = func.ceil(subquery.c.total_count * percentile / 100.0)
-
-        percentile_query = select(subquery.c.response_time_ms).where(
-            subquery.c.rn == target_rank
-        ).limit(1)
-
-        result = await self.session.execute(percentile_query)
-        score = result.scalar_one_or_none()
-        if score is None:
-            return 0.0
-        return float(score)
-
-    async def _get_slowest_endpoint(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-    ) -> Optional[dict]:
-        """Get the endpoint with the slowest response time."""
-        query = select(
-            APILog.endpoint,
-            APILog.response_time_ms,
-        ).where(
-            APILog.created_at >= (since or _utcnow() - timedelta(hours=24))
+            .where(*filters, APILog.endpoint.in_(endpoints))
+            .subquery()
         )
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
+        conditions = [ranked.c.rn == func.ceil(ranked.c.total * p / 100.0) for p in wanted]
+        rows = (
+            await self.session.execute(
+                select(ranked.c.endpoint, ranked.c.response_time_ms, ranked.c.rn, ranked.c.total).where(or_(*conditions))
+            )
+        ).all()
+        for endpoint, latency, rank, total in rows:
+            for p in wanted:
+                if int(rank) == math.ceil(int(total) * p / 100.0):
+                    results[endpoint][p] = round(float(latency), 2)
+        return results
 
-        query = query.order_by(desc(APILog.response_time_ms)).limit(1)
+    async def _slowest_endpoint(self, filters: list) -> Optional[str]:
+        row = (
+            await self.session.execute(
+                select(APILog.endpoint).where(*filters).order_by(desc(APILog.response_time_ms)).limit(1)
+            )
+        ).scalar_one_or_none()
+        return row
 
-        result = await self.session.execute(query)
-        row = result.one_or_none()
+    async def _recent_requests(self, filters: list, limit: int) -> List[RecentRequest]:
+        rows = (
+            await self.session.execute(
+                select(APILog).where(*filters).order_by(desc(APILog.created_at)).limit(limit)
+            )
+        ).scalars().all()
+        return [RecentRequest.model_validate(row, from_attributes=True) for row in rows]
 
-        if row:
-            return {"endpoint": row[0], "response_time_ms": float(row[1])}
-        return None
+    async def _time_series(
+        self, filters: list, since: datetime, hours: int
+    ) -> tuple[List[LatencyPoint], List[LatencyDistributionPoint]]:
+        """Average, p95, p99, count, and errors per time bucket."""
+        rows = (
+            await self.session.execute(
+                select(APILog.created_at, APILog.response_time_ms, APILog.status_code).where(*filters)
+            )
+        ).all()
+        if not rows:
+            return [], []
+        size = _bucket_size(hours)
+        first = min(row[0] for row in rows)
+        buckets: Dict[str, dict] = {}
+        for created_at, latency, status in rows:
+            index = int((created_at - first).total_seconds() // size.total_seconds())
+            key = (first + size * index).isoformat(timespec="seconds")
+            bucket = buckets.setdefault(key, {"times": [], "errors": 0})
+            bucket["times"].append(float(latency))
+            bucket["errors"] += 1 if status >= 400 else 0
+
+        series, distribution = [], []
+        for key, bucket in sorted(buckets.items()):
+            times = bucket["times"]
+            avg = round(sum(times) / len(times), 2)
+            series.append(LatencyPoint(timestamp=key, avg_response_time_ms=avg, request_count=len(times), error_count=bucket["errors"]))
+            distribution.append(
+                LatencyDistributionPoint(
+                    timestamp=key,
+                    avg_response_time_ms=avg,
+                    p95_response_time_ms=_nearest_rank(times, 95),
+                    p99_response_time_ms=_nearest_rank(times, 99),
+                    request_count=len(times),
+                    error_count=bucket["errors"],
+                )
+            )
+        return series, distribution
 
     async def get_endpoint_logs(
         self,
@@ -546,381 +428,145 @@ class AnalyticsService:
         user_id: Optional[int] = None,
         limit: int = 100,
         hours: Optional[int] = None,
+        service: Optional[str] = None,
+        direction: Optional[str] = None,
+        method: Optional[str] = None,
     ) -> List[APILog]:
-        """Get API logs for a specific endpoint."""
+        """Raw rows whose endpoint contains ``endpoint_pattern`` (and match ``method``), newest first."""
         query = select(APILog).where(APILog.endpoint.like(f"%{endpoint_pattern}%"))
-
-        if user_id is not None:
+        if method:
+            query = query.where(APILog.method == method.upper())
+        if self.end_user:
+            query = query.where(APILog.end_user == self.end_user)
+        elif service:
+            query = query.where(APILog.service == service)
+        elif user_id is not None:
             query = query.where(APILog.user_id == user_id)
-
+        if direction:
+            query = query.where(APILog.direction == direction)
         if hours:
-            since = _utcnow() - timedelta(hours=hours)
-            query = query.where(APILog.created_at >= since)
-
-        query = query.order_by(desc(APILog.created_at)).limit(limit)
-
-        result = await self.session.execute(query)
-        return result.scalars().all()
+            query = query.where(APILog.created_at >= _utcnow() - timedelta(hours=hours))
+        rows = await self.session.execute(query.order_by(desc(APILog.created_at)).limit(limit))
+        return list(rows.scalars().all())
 
     async def get_endpoint_benchmark(
-        self, user_id: Optional[int] = None, hours: int = 24
+        self,
+        user_id: Optional[int] = None,
+        hours: int = 24,
+        since: Optional[datetime] = None,
+        service: Optional[str] = None,
+        direction: Optional[str] = None,
     ) -> BenchmarkReport:
-        """Return a lightweight before/after benchmark report."""
-        return await self._build_benchmark_report_optimized(user_id, _utcnow() - timedelta(hours=hours))
-
-    async def get_top_slow_endpoints(
-        self, user_id: Optional[int] = None, hours: int = 24, limit: int = 10
-    ) -> List[dict]:
-        """Return the top slow endpoints sorted by p95 latency."""
-        since = _utcnow() - timedelta(hours=hours)
-        return await self._get_top_slow_endpoints_optimized(user_id, since, limit=limit)
+        """Average latency of the first half of the window versus the second half."""
+        since = since or _utcnow() - timedelta(hours=hours)
+        rows = (
+            await self.session.execute(
+                select(APILog.created_at, APILog.response_time_ms)
+                .where(*self._filters(user_id, since, service, direction))
+                .order_by(APILog.created_at.asc())
+            )
+        ).all()
+        stamp = since.isoformat(timespec="seconds")
+        if not rows:
+            return BenchmarkReport(
+                baseline_avg_response_time_ms=0.0, optimized_avg_response_time_ms=0.0,
+                improvement_percent=0.0, sample_size=0, before_window=stamp, after_window=stamp,
+            )
+        midpoint = max(1, len(rows) // 2)
+        before = [float(r[1]) for r in rows[:midpoint]]
+        after = [float(r[1]) for r in rows[midpoint:]] or before
+        baseline = sum(before) / len(before)
+        optimized = sum(after) / len(after)
+        after_start = rows[min(midpoint, len(rows) - 1)][0]
+        return BenchmarkReport(
+            baseline_avg_response_time_ms=round(baseline, 2),
+            optimized_avg_response_time_ms=round(optimized, 2),
+            improvement_percent=round((baseline - optimized) / baseline * 100, 2) if baseline > 0 else 0.0,
+            sample_size=len(rows),
+            before_window=f"{stamp} -> {rows[midpoint - 1][0].isoformat(timespec='seconds')}",
+            after_window=f"{after_start.isoformat(timespec='seconds')} -> {rows[-1][0].isoformat(timespec='seconds')}",
+        )
 
     async def get_optimization_suggestions(
-        self, user_id: Optional[int] = None, hours: int = 24
+        self, user_id: Optional[int] = None, hours: int = 24, service: Optional[str] = None
     ) -> List[OptimizationSuggestion]:
-        """Return optimization hints derived from request patterns."""
-        summary = await self.get_analytics_summary(user_id=user_id, hours=hours)
-        return summary.optimization_suggestions
+        return (await self.get_analytics_summary(user_id=user_id, hours=hours, service=service)).optimization_suggestions
 
-    def _percentile(self, values: List[float], percentile: float) -> float:
-        """Calculate percentile from a list of values."""
-        if not values:
-            return 0.0
-        sorted_values = sorted(values)
-        index = (len(sorted_values) - 1) * (percentile / 100)
-        lower = int(index)
-        upper = min(lower + 1, len(sorted_values) - 1)
-        weight = index - lower
-        if lower == upper:
-            return round(sorted_values[lower], 2)
-        return round(
-            sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight, 2
-        )
+    # ---------------------------------------------------------- heuristics
 
-    async def _build_latency_series_optimized(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        hours: int = 24,
-    ) -> List[LatencyPoint]:
-        """
-        Build latency time series using SQL-based aggregation.
-        Groups logs by time bucket and computes stats per bucket.
-        """
-        bucket_count = max(1, min(12, hours))
-        bucket_minutes = max(5, int((hours * 60) / bucket_count))
-        bucket_size = timedelta(minutes=bucket_minutes)
-
-        if not since:
-            since = _utcnow() - timedelta(hours=hours)
-
-        # Query all logs in range (minimal columns)
-        query = select(
-            APILog.created_at,
-            APILog.response_time_ms,
-            APILog.status_code,
-        ).where(APILog.created_at >= since)
-        
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        result = await self.session.execute(query)
-        logs = result.all()
-
-        if not logs:
-            return []
-
-        first_timestamp = min(log[0] for log in logs)
-        buckets: dict[str, dict[str, int | float]] = {}
-
-        for created_at, response_time, status_code in logs:
-            elapsed = created_at - first_timestamp
-            bucket_index = int(elapsed.total_seconds() // bucket_size.total_seconds())
-            bucket_start = first_timestamp + bucket_size * bucket_index
-            bucket_key = bucket_start.isoformat(timespec="seconds")
-
-            if bucket_key not in buckets:
-                buckets[bucket_key] = {"count": 0, "errors": 0, "total_time": 0.0}
-
-            buckets[bucket_key]["count"] += 1
-            buckets[bucket_key]["total_time"] += response_time
-            if status_code >= 400:
-                buckets[bucket_key]["errors"] += 1
-
-        series: List[LatencyPoint] = []
-        for timestamp, stats in sorted(buckets.items()):
-            count = max(int(stats["count"]), 1)
-            series.append(
-                LatencyPoint(
-                    timestamp=timestamp,
-                    avg_response_time_ms=round(float(stats["total_time"]) / count, 2),
-                    request_count=int(stats["count"]),
-                    error_count=int(stats["errors"]),
-                )
-            )
-        return series
-
-    async def _build_latency_distribution_optimized(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        hours: int = 24,
-    ) -> List[LatencyDistributionPoint]:
-        """
-        Build latency distribution time series with percentiles.
-        Groups by time bucket and computes p95/p99 per bucket.
-        """
-        bucket_count = max(1, min(12, hours))
-        bucket_minutes = max(5, int((hours * 60) / bucket_count))
-        bucket_size = timedelta(minutes=bucket_minutes)
-
-        if not since:
-            since = _utcnow() - timedelta(hours=hours)
-
-        # Fetch logs with response times
-        query = select(
-            APILog.created_at,
-            APILog.response_time_ms,
-            APILog.status_code,
-        ).where(APILog.created_at >= since)
-        
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        result = await self.session.execute(query)
-        logs = result.all()
-
-        if not logs:
-            return []
-
-        first_timestamp = min(log[0] for log in logs)
-        buckets: dict[str, dict] = {}
-
-        for created_at, response_time, status_code in logs:
-            elapsed = created_at - first_timestamp
-            bucket_index = int(elapsed.total_seconds() // bucket_size.total_seconds())
-            bucket_start = first_timestamp + bucket_size * bucket_index
-            bucket_key = bucket_start.isoformat(timespec="seconds")
-
-            if bucket_key not in buckets:
-                buckets[bucket_key] = {
-                    "count": 0,
-                    "errors": 0,
-                    "times": [],
-                    "total_time": 0.0,
-                }
-
-            buckets[bucket_key]["count"] += 1
-            buckets[bucket_key]["total_time"] += response_time
-            buckets[bucket_key]["times"].append(response_time)
-            if status_code >= 400:
-                buckets[bucket_key]["errors"] += 1
-
-        distribution: List[LatencyDistributionPoint] = []
-        for timestamp, stats in sorted(buckets.items()):
-            count = max(int(stats["count"]), 1)
-            distribution.append(
-                LatencyDistributionPoint(
-                    timestamp=timestamp,
-                    avg_response_time_ms=round(float(stats["total_time"]) / count, 2),
-                    p95_response_time_ms=self._percentile(stats["times"], 95),
-                    p99_response_time_ms=self._percentile(stats["times"], 99),
-                    request_count=int(stats["count"]),
-                    error_count=int(stats["errors"]),
-                )
-            )
-        return distribution
-
-    async def _build_benchmark_report_optimized(
-        self,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-    ) -> BenchmarkReport:
-        """Build benchmark report using minimal data fetch."""
-        if not since:
-            since = _utcnow() - timedelta(hours=24)
-
-        # Fetch response times with created_at (minimal columns)
-        query = select(
-            APILog.created_at,
-            APILog.response_time_ms,
-        ).where(APILog.created_at >= since)
-        
-        if user_id is not None:
-            query = query.where(APILog.user_id == user_id)
-
-        query = query.order_by(APILog.created_at.asc())
-
-        result = await self.session.execute(query)
-        logs = result.all()
-
-        if not logs:
-            return BenchmarkReport(
-                baseline_avg_response_time_ms=0.0,
-                optimized_avg_response_time_ms=0.0,
-                improvement_percent=0.0,
-                sample_size=0,
-                before_window=since.isoformat(timespec="seconds"),
-                after_window=since.isoformat(timespec="seconds"),
-            )
-
-        # Split into baseline and optimized periods
-        midpoint = max(1, len(logs) // 2)
-        baseline_times = [float(row[1]) for row in logs[:midpoint]]
-        optimized_times = [float(row[1]) for row in logs[midpoint:]]
-        if not optimized_times:
-            optimized_times = baseline_times
-
-        baseline_avg = sum(baseline_times) / len(baseline_times) if baseline_times else 0.0
-        optimized_avg = sum(optimized_times) / len(optimized_times) if optimized_times else 0.0
-        improvement = (
-            ((baseline_avg - optimized_avg) / baseline_avg * 100) if baseline_avg > 0 else 0.0
-        )
-
-        after_start_index = min(midpoint, len(logs) - 1)
-
-        return BenchmarkReport(
-            baseline_avg_response_time_ms=round(baseline_avg, 2),
-            optimized_avg_response_time_ms=round(optimized_avg, 2),
-            improvement_percent=round(improvement, 2),
-            sample_size=len(logs),
-            before_window=f"{since.isoformat(timespec='seconds')} -> {logs[midpoint - 1][0].isoformat(timespec='seconds')}",
-            after_window=f"{logs[after_start_index][0].isoformat(timespec='seconds')} -> {logs[-1][0].isoformat(timespec='seconds')}",
-        )
-
-    def _build_suggestions(
-        self,
-        total_requests: int,
-        total_errors: int,
-        cache_hit_rate: float,
-        avg_response_time_ms: float,
-        slowest_response_time_ms: float,
-        slow_endpoints: List[dict],
-        slow_endpoint_ranking: Optional[List[dict]] = None,
+    @staticmethod
+    def _suggestions(
+        total: int, errors: int, cache_hit_rate: float, avg_ms: float, max_ms: float,
+        slow_endpoints: List[dict], ranking: List[dict],
     ) -> List[OptimizationSuggestion]:
-        """Build optimization suggestions based on metrics."""
-        suggestions: List[OptimizationSuggestion] = []
-
+        """Fixed, explainable rules; the assistant turns these into narrative."""
+        out: List[OptimizationSuggestion] = []
         if cache_hit_rate < 65:
-            suggestions.append(
-                OptimizationSuggestion(
-                    title="Increase cache coverage",
-                    severity="high",
-                    reason=f"Cache hit rate is only {cache_hit_rate:.1f}% across {total_requests} requests.",
-                    action="Apply route-wise caching to high-traffic GET endpoints and warm them on startup.",
-                )
-            )
+            out.append(OptimizationSuggestion(
+                title="Increase cache coverage", severity="high",
+                reason=f"Cache hit rate is only {cache_hit_rate:.1f}% across {total} requests.",
+                action="Add cache rules for high-traffic GET endpoints.",
+            ))
+        if avg_ms > 250:
+            out.append(OptimizationSuggestion(
+                title="Reduce average latency", severity="medium",
+                reason=f"Average response time is {avg_ms:.0f}ms.",
+                action="Move expensive work off the request path and cache repeated reads.",
+            ))
+        if max_ms > 750 and slow_endpoints:
+            out.append(OptimizationSuggestion(
+                title="Inspect slow endpoints", severity="high", endpoint=slow_endpoints[0]["endpoint"],
+                reason=f"Slowest observed latency is {max_ms:.0f}ms.",
+                action="Check query plans and indexes, then consider a cache rule.",
+            ))
+        hot = [e for e in ranking if e["cache_hit_rate"] < 40 and e["p95_time"] > 300]
+        if hot:
+            out.append(OptimizationSuggestion(
+                title="Cache slow responses", severity="high", endpoint=hot[0]["endpoint"],
+                reason=f"{hot[0]['endpoint']} has a p95 of {hot[0]['p95_time']:.0f}ms and a low cache hit rate.",
+                action="Cache repeated GET responses for this endpoint.",
+            ))
+        busy = [e for e in ranking if e["count"] > 50 and e["avg_time"] > 400]
+        if busy:
+            out.append(OptimizationSuggestion(
+                title="Reduce repeated expensive work", severity="medium", endpoint=busy[0]["endpoint"],
+                reason=f"{busy[0]['endpoint']} sees {busy[0]['count']} requests at {busy[0]['avg_time']:.0f}ms average.",
+                action="Memoise or cache the hottest slow route.",
+            ))
+        if total and errors / total * 100 > 2:
+            out.append(OptimizationSuggestion(
+                title="Harden error handling", severity="medium",
+                reason=f"Error rate is {errors / total * 100:.2f}%.",
+                action="Investigate the failing endpoints with the troubleshooting assistant.",
+            ))
+        if not out:
+            out.append(OptimizationSuggestion(
+                title="System is healthy", severity="low",
+                reason="No major bottlenecks were detected in the sampled window.",
+                action="Keep monitoring latency, cache hit rate, and slow endpoint drift.",
+            ))
+        return out[:4]
 
-        if avg_response_time_ms > 250:
-            suggestions.append(
-                OptimizationSuggestion(
-                    title="Reduce average latency",
-                    severity="medium",
-                    reason=f"Average response time is {avg_response_time_ms:.0f}ms.",
-                    action="Move expensive work to background tasks and reduce synchronous database work.",
-                )
-            )
-
-        if slowest_response_time_ms > 750 and slow_endpoints:
-            suggestions.append(
-                OptimizationSuggestion(
-                    title="Inspect slow endpoints",
-                    severity="high",
-                    endpoint=slow_endpoints[0]["endpoint"],
-                    reason=f"Slowest observed latency is {slowest_response_time_ms:.0f}ms.",
-                    action="Add query indexes, tighten select lists, and consider caching responses.",
-                )
-            )
-
-        if slow_endpoint_ranking:
-            hottest_cache_issues = [
-                endpoint
-                for endpoint in slow_endpoint_ranking
-                if endpoint["cache_hit_rate"] < 40 and endpoint["p95_time"] > 300
-            ]
-            if hottest_cache_issues:
-                suggestions.append(
-                    OptimizationSuggestion(
-                        title="Cache slow responses",
-                        severity="high",
-                        endpoint=hottest_cache_issues[0]["endpoint"],
-                        reason=(
-                            f"{hottest_cache_issues[0]['endpoint']} has a p95 latency of "
-                            f"{hottest_cache_issues[0]['p95_time']:.0f}ms and low cache hit rate."
-                        ),
-                        action="Cache repeated GET responses and apply a tighter caching policy for the slowest endpoints.",
-                    )
-                )
-
-            repeated_expensive = [
-                endpoint
-                for endpoint in slow_endpoint_ranking
-                if endpoint["count"] > 50 and endpoint["avg_time"] > 400
-            ]
-            if repeated_expensive:
-                suggestions.append(
-                    OptimizationSuggestion(
-                        title="Reduce repeated expensive work",
-                        severity="medium",
-                        endpoint=repeated_expensive[0]["endpoint"],
-                        reason=(
-                            f"{repeated_expensive[0]['endpoint']} sees {repeated_expensive[0]['count']} requests "
-                            f"with average latency {repeated_expensive[0]['avg_time']:.0f}ms."
-                        ),
-                        action="Use memoization, background jobs, or incremental caching for the hottest slow routes.",
-                    )
-                )
-
-        error_rate = (total_errors / total_requests * 100) if total_requests > 0 else 0.0
-        if error_rate > 2:
-            suggestions.append(
-                OptimizationSuggestion(
-                    title="Harden error handling",
-                    severity="medium",
-                    reason=f"Error rate is {error_rate:.2f}%.",
-                    action="Add retries for transient upstream calls and normalize exception responses.",
-                )
-            )
-
-        if not suggestions:
-            suggestions.append(
-                OptimizationSuggestion(
-                    title="System is healthy",
-                    severity="low",
-                    reason="No major bottlenecks were detected in the sampled window.",
-                    action="Keep monitoring latency, cache hit rate, and slow endpoint drift.",
-                )
-            )
-
-        return suggestions[:4]
-
-    def _empty_analytics_summary(self) -> AnalyticsSummary:
-        """Return an empty analytics summary."""
+    @staticmethod
+    def _empty_summary() -> AnalyticsSummary:
         return AnalyticsSummary(
-            total_requests=0,
-            total_errors=0,
-            cache_hit_rate=0.0,
-            avg_response_time_ms=0.0,
-            slowest_endpoint=None,
-            slowest_response_time_ms=None,
-            top_endpoints=[],
-            slow_endpoint_ranking=[],
-            overall_p95_response_time_ms=0.0,
-            overall_p99_response_time_ms=0.0,
-            error_rate=0.0,
-            request_rate_per_minute=0.0,
-            cache_miss_rate=0.0,
-            recent_requests=[],
-            latency_series=[],
-            latency_distribution=[],
-            slow_endpoints=[],
+            total_requests=0, total_errors=0, cache_hit_rate=0.0, avg_response_time_ms=0.0,
+            slowest_endpoint=None, slowest_response_time_ms=None, top_endpoints=[], error_rate=0.0,
             optimization_suggestions=[
                 OptimizationSuggestion(
-                    title="No data available",
-                    severity="low",
+                    title="No data available", severity="low",
                     reason="No requests recorded in the specified time period.",
                     action="Make some API requests and check back later.",
                 )
             ],
-            benchmark=None,
         )
+
+
+def persist_benchmark_report(report: dict) -> None:
+    """Write the latest benchmark report to disk (background task)."""
+    BENCHMARK_REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    BENCHMARK_REPORT_FILE.write_text(
+        json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(), "report": report}, indent=2, default=str),
+        encoding="utf-8",
+    )
+    logger.info("Benchmark report persisted to %s", BENCHMARK_REPORT_FILE)

@@ -4,9 +4,9 @@ Demo data seeder — fills the database with users, cache rules, and a
 realistic 24-hour history of API traffic so the analytics dashboards
 light up immediately.
 
-Run with:
-    python seed_demo.py          # idempotent: skips existing users/rules, adds traffic
-    python seed_demo.py --reset  # wipes existing logs/analytics first, then re-seeds
+Run from the repository root:
+    python scripts/seed_demo.py          # idempotent: skips existing users/rules, adds traffic
+    python scripts/seed_demo.py --reset  # wipes existing request logs first, then re-seeds
 """
 import argparse
 import asyncio
@@ -20,7 +20,7 @@ from datetime import datetime, timezone, timedelta
 import bcrypt
 
 # Add app to path (works on Windows and POSIX)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Ensure emoji output works on Windows consoles (cp1252 by default)
 if hasattr(sys.stdout, "reconfigure"):
@@ -29,7 +29,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from app.database.base import Base
 from app.database.db import engine, async_session_maker
-from app.models import User, CacheRule, APILog, Analytics
+from app.models import User, CacheRule, APILog
 from app.core.constants import UserRole
 from app.config import settings
 
@@ -103,8 +103,6 @@ async def seed_users(session) -> dict:
             hashed_password=_hash_password(admin_password),
             role=UserRole.ADMIN,
             is_active=True,
-            is_superuser=True,
-            api_quota=100000,
         )
         session.add(admin)
         await session.flush()
@@ -128,8 +126,6 @@ async def seed_users(session) -> dict:
                 hashed_password=_hash_password(DEMO_PASSWORD),
                 role=role,
                 is_active=True,
-                is_superuser=False,
-                api_quota=50000,
             )
             session.add(user)
             await session.flush()
@@ -186,7 +182,7 @@ def _hour_volume(hour_of_day: int) -> float:
 
 
 async def generate_traffic(session, users: dict):
-    """Generate a realistic 24h history of APILog + hourly Analytics rows."""
+    """Generate a realistic 24h history of APILog rows."""
 
     now = _utcnow()
     start = now - timedelta(hours=HOURS)
@@ -206,7 +202,6 @@ async def generate_traffic(session, users: dict):
     rng = random.Random(42)  # deterministic seed -> reproducible demo data
 
     logs: list[APILog] = []
-    hourly: dict[tuple, dict] = {}
 
     for i in range(TOTAL_REQUESTS):
         elapsed_ratio = i / TOTAL_REQUESTS
@@ -282,61 +277,11 @@ async def generate_traffic(session, users: dict):
             created_at=ts,
         ))
 
-        # Hourly analytics aggregation (same period format as AnalyticsService)
-        hour_key = ts.replace(minute=0, second=0, microsecond=0)
-        period_key = f"hourly:{hour_key.isoformat(timespec='minutes')}"
-        agg_key = (period_key, user_id)
-        if agg_key not in hourly:
-            hourly[agg_key] = {
-                "period": period_key,
-                "user_id": user_id,
-                "total": 0,
-                "errors": 0,
-                "hits": 0,
-                "misses": 0,
-                "total_time": 0.0,
-                "min": float("inf"),
-                "max": 0.0,
-                "bytes_in": 0,
-                "bytes_out": 0,
-            }
-        agg = hourly[agg_key]
-        agg["total"] += 1
-        agg["errors"] += 1 if status_code >= 400 else 0
-        if cache_hit:
-            agg["hits"] += 1
-        else:
-            agg["misses"] += 1
-        agg["total_time"] += latency
-        agg["min"] = min(agg["min"], latency)
-        agg["max"] = max(agg["max"], latency)
-        agg["bytes_in"] += rng.randint(200, 3000)
-        agg["bytes_out"] += rng.randint(500, 12000)
-
     # Bulk insert logs
     session.add_all(logs)
     await session.flush()
     print(f"✅ Inserted {len(logs)} API log entries")
 
-    # Insert hourly aggregates for a fully consistent dataset
-    analytics_rows = []
-    for agg in hourly.values():
-        total = max(agg["total"], 1)
-        analytics_rows.append(Analytics(
-            user_id=agg["user_id"],
-            period=agg["period"],
-            total_requests=agg["total"],
-            total_errors=agg["errors"],
-            cache_hits=agg["hits"],
-            cache_misses=agg["misses"],
-            avg_response_time_ms=round(agg["total_time"] / total, 2),
-            min_response_time_ms=round(agg["min"], 2),
-            max_response_time_ms=round(agg["max"], 2),
-            total_bytes_sent=agg["bytes_out"],
-            total_bytes_received=agg["bytes_in"],
-        ))
-    session.add_all(analytics_rows)
-    print(f"✅ Inserted {len(analytics_rows)} hourly analytics aggregates")
 
 
 async def verify(session):
@@ -361,9 +306,8 @@ async def seed_demo(reset: bool):
     async with async_session_maker() as session:
         if reset:
             from sqlalchemy import text
-            for table in ("analytics", "api_logs"):
-                await session.execute(text(f"DELETE FROM {table}"))
-            print(f"🧹 Wiped existing logs/analytics ({reset})")
+            await session.execute(text("DELETE FROM api_logs"))
+            print(f"🧹 Wiped existing request logs ({reset})")
             await session.commit()
 
         users = await seed_users(session)
@@ -380,7 +324,7 @@ async def seed_demo(reset: bool):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seed demo data for API Optimizer")
     parser.add_argument("--reset", action="store_true",
-                        help="Wipe existing logs/analytics before seeding")
+                        help="Wipe existing request logs before seeding")
     args = parser.parse_args()
 
     asyncio.run(seed_demo(reset=args.reset))

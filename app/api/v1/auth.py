@@ -4,8 +4,17 @@ Authentication API routes.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import get_current_user
 from app.database.db import get_session
-from app.schemas.auth import UserCreate, UserLogin, UserResponse, TokenResponse, TokenRefresh
+from app.schemas.auth import (
+    LogoutRequest,
+    MessageResponse,
+    TokenRefresh,
+    TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+)
 from app.services.auth import AuthService
 from app.core.exceptions import APIException
 
@@ -51,5 +60,19 @@ async def refresh(
         auth_service = AuthService(session)
         tokens = await auth_service.refresh_access_token(token_data.refresh_token)
         return tokens
+    except APIException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(
+    payload: LogoutRequest,
+    current_user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Revoke the current access token and the given refresh token."""
+    try:
+        await AuthService(session).logout(current_user, payload.refresh_token)
+        return MessageResponse(message="Logged out")
     except APIException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)

@@ -95,6 +95,32 @@ async def init_db() -> None:
         if engine.dialect.name == "postgresql":
             await conn.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": SCHEMA_LOCK_ID})
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
+
+
+def _add_missing_columns(connection) -> None:
+    """``create_all`` never alters existing tables; add columns that newer
+    models declare so a database created by an older version keeps working."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(connection)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            spec = column.type.compile(dialect=connection.dialect)
+            numeric = spec.upper().startswith(("INT", "FLOAT", "NUM", "REAL", "DOUBLE", "BOOL"))
+            default = ""
+            if column.server_default is not None:
+                arg = column.server_default.arg
+                value = arg.text if hasattr(arg, "text") else str(arg)
+                default = f" DEFAULT {value}" if numeric else f" DEFAULT '{value}'"
+            elif not column.nullable:
+                default = " DEFAULT 0" if numeric else " DEFAULT ''"
+            connection.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {spec}{default}'))
 
 
 async def dispose_db() -> None:

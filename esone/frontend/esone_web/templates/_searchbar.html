@@ -1,0 +1,13 @@
+{% from "_icons.html" import icon %}
+{# The search bar every signed-in page carries. Submitting opens the results page with the question in the URL. #}
+<form id="search-form" class="search-box search-box-results" role="search" novalidate action="/chat" method="get">
+  <a href="/" class="search-bar-logo" aria-label="Esone home">
+    <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="9.5" r="3.5" fill="#fff"/><path d="M10.4 12.5h3.2l1.1 6.5H9.3l1.1-6.5Z" fill="#fff"/></svg></span>
+  </a>
+  <input id="search-input" class="search-input" type="search" name="q" maxlength="2000" autocomplete="off" placeholder="Ask anything…" aria-label="Your question">
+  <button type="button" id="search-clear" class="search-clear" aria-label="Clear" hidden>{{ icon("x", "icon-xs") }}</button>
+  <button type="submit" id="search-submit" class="search-submit" aria-label="Search">
+    <span class="btn-idle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-xs"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+    <span class="btn-pending"><span class="spinner"></span></span>
+  </button>
+</form>

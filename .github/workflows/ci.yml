@@ -7,7 +7,7 @@ on:
 
 jobs:
   backend:
-    name: Backend (lint + test)
+    name: Backend (lint + migrations + test)
     runs-on: ubuntu-latest
     services:
       redis:
@@ -25,7 +25,9 @@ jobs:
       SECRET_KEY: ci-secret-key-for-github-actions-0123456789abcdef
       ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: Admin@123
-      RATE_LIMIT_DEFAULT_REQUESTS: 100
+      RATE_LIMIT_ANONYMOUS_REQUESTS: 100
+      RATE_LIMIT_USER_REQUESTS: 100
+      RATE_LIMIT_PRIVILEGED_REQUESTS: 100
     steps:
       - uses: actions/checkout@v4
 
@@ -40,31 +42,18 @@ jobs:
           pip install -r requirements.txt ruff
 
       - name: Lint (ruff)
-        run: ruff check app tests seed_demo.py
+        run: ruff check .
+
+      - name: Migrations apply cleanly
+        run: |
+          DATABASE_URL=sqlite+aiosqlite:///./ci_migrations.db alembic upgrade head
+          DATABASE_URL=sqlite+aiosqlite:///./ci_migrations.db alembic downgrade base
 
       - name: Test (pytest)
         run: pytest -q
 
-  frontend:
-    name: Frontend (build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci
-      - run: npm run build
-
   site:
-    name: Marketing site (lint + build)
+    name: Dashboard (lint + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -80,4 +69,52 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      - run: npx tsc --noEmit
       - run: npm run build
+
+  esone:
+    name: Esone (lint + backend + frontend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: esone
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            esone/backend/requirements.txt
+            esone/frontend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: esone/frontend/package-lock.json
+
+      - name: Install
+        run: |
+          pip install -r backend/requirements.txt -r frontend/requirements.txt ruff
+          npm ci --prefix frontend
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Backend tests
+        working-directory: esone/backend
+        run: pytest -q
+
+      - name: Compiled JS is up to date
+        working-directory: esone/frontend
+        run: |
+          npm run build
+          git diff --exit-code -- esone_web/static/js || (echo "Compiled JS is stale. Run 'npm run build' in esone/frontend and commit." && exit 1)
+
+      - name: Frontend tests and static build
+        working-directory: esone/frontend
+        run: |
+          pytest -q
+          python build.py --out dist --api-url https://esone-api.example.com
