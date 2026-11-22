@@ -15,6 +15,7 @@ SCOPED_READS = [
     "/api/v1/analytics/slow-endpoints",
     "/api/v1/analytics/benchmark",
     "/api/v1/analytics/suggestions",
+    "/api/v1/analytics/queries",
     "/api/v1/rate-limits/me",
     "/api/v1/rate-limits/events",
     "/api/v1/ai-usage/summary",

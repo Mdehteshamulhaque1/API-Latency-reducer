@@ -15,7 +15,9 @@
 </head>
 <body data-page="{{ page }}">
   {% block body %}{% endblock %}
+  {% include "_chatbot.html" %}
   <script type="module" src="{{ url_for('static', path='js/site.js') }}?v={{ asset_version }}"></script>
+  <script type="module" src="{{ url_for('static', path='js/chatbot.js') }}?v={{ asset_version }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

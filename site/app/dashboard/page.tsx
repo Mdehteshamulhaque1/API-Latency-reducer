@@ -8,6 +8,7 @@ import { LatencyChart } from "@/components/charts/latency-chart"
 import { Sparkline } from "@/components/charts/sparkline"
 import { CHART } from "@/components/charts/chart-theme"
 import { DirectionPill } from "@/components/dashboard/service-switch"
+import { RealQueries } from "@/components/dashboard/real-queries"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -150,6 +151,8 @@ export default function DashboardPage() {
           {error}
         </Alert>
       )}
+
+      {!monitored.loading && <RealQueries service={service} hours={HOURS} />}
 
       {/* Health strip */}
       <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">

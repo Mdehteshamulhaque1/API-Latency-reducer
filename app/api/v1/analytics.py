@@ -18,9 +18,10 @@ from app.core.constants import DIRECTIONS
 from app.core.security import get_current_user
 from app.core.view_as import AsUserParam, resolve_view_as
 from app.database.db import get_session
-from app.schemas.analytics import AnalyticsSummary, MonitoredService, SlowEndpointRankingItem
+from app.schemas.analytics import AnalyticsSummary, MonitoredService, QueryBreakdown, SlowEndpointRankingItem
 from app.schemas.ingest import SERVICE_NAME_PATTERN
 from app.services.analytics import AnalyticsService, persist_benchmark_report
+from app.services.query_breakdown import QueryBreakdownService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 logger = logging.getLogger(__name__)
@@ -77,6 +78,21 @@ async def get_analytics_summary(
     except Exception as e:
         logger.error("Failed to build analytics summary: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/queries", response_model=QueryBreakdown)
+async def get_query_breakdown(
+    hours: int = Query(default=24, gt=0, le=720),
+    service: Optional[str] = ServiceParam,
+    as_user: Optional[str] = AsUserParam,
+    current_user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> QueryBreakdown:
+    """Real queries (questions users asked) apart from sign-in, history and health traffic, with their cost."""
+    user_id, service, _, end_user = _scoped(current_user, as_user, service)
+    return await QueryBreakdownService(session).breakdown(
+        hours=hours, user_id=user_id, service=service, end_user=end_user
+    )
 
 
 @router.get("/endpoints")

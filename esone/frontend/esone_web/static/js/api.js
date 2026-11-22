@@ -238,3 +238,9 @@ export async function apiChatHistoryClear() {
     const res = await authed("/api/v1/chat/history", { method: "DELETE" });
     return res.json();
 }
+export async function apiChatbot(message, history, signal) {
+    const res = await request("/api/v1/chatbot", { method: "POST", body: JSON.stringify({ message, history }), signal });
+    if (!res.ok)
+        throw new ApiError(await readErrorMessage(res), res.status);
+    return res.json();
+}

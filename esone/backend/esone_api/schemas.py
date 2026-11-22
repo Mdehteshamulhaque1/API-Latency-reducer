@@ -77,6 +77,25 @@ class HealthResponse(BaseModel):
 # ----- chat (mirrors the API Optimizer's app/schemas/answers.py) -----
 
 
+class ChatbotTurn(BaseModel):
+    """One earlier message in the project chatbot conversation."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
+class ChatbotRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    #: Earlier turns, oldest first; only the last few are used.
+    history: list[ChatbotTurn] = Field(default_factory=list, max_length=20)
+
+
+class ChatbotResponse(BaseModel):
+    answer: str
+    #: "gemini" when the model phrased it, "notes" when it is the closest knowledge section.
+    answered_by: Literal["gemini", "notes"]
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=2000)
 

@@ -1,0 +1,36 @@
+{# Floating project chatbot on every page (src/chatbot.ts, POST /api/v1/chatbot). #}
+<div id="chatbot" class="chatbot">
+  <section id="chatbot-panel" class="chatbot-panel" role="dialog" aria-label="Ask about this project" hidden>
+    <header class="chatbot-head">
+      <div>
+        <p class="chatbot-title">Project guide</p>
+        <p class="chatbot-sub">Ask about API Optimizer, its tech stack or its developer</p>
+      </div>
+      <div class="chatbot-head-actions">
+        <button type="button" id="chatbot-reset" class="chatbot-icon-btn" aria-label="Start a new conversation" title="New conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button type="button" id="chatbot-close" class="chatbot-icon-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="chatbot-log" class="chatbot-log" aria-live="polite"></div>
+    <div id="chatbot-suggestions" class="chatbot-suggestions">
+      <button type="button" class="chatbot-chip" data-question="What is API Optimizer?">What is API Optimizer?</button>
+      <button type="button" class="chatbot-chip" data-question="Which tech stack is used?">Which tech stack is used?</button>
+      <button type="button" class="chatbot-chip" data-question="How does the answer cache work?">How does the cache work?</button>
+      <button type="button" class="chatbot-chip" data-question="Who built this project?">Who built this project?</button>
+    </div>
+    <form id="chatbot-form" class="chatbot-form" novalidate>
+      <textarea id="chatbot-input" class="chatbot-input" rows="1" maxlength="1000" placeholder="Ask about the project…" aria-label="Your question"></textarea>
+      <button type="submit" id="chatbot-send" class="chatbot-send" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </section>
+  <button type="button" id="chatbot-toggle" class="chatbot-toggle" aria-expanded="false" aria-controls="chatbot-panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+    <span>Ask about this project</span>
+  </button>
+</div>

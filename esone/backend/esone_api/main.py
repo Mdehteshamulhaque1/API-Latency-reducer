@@ -11,11 +11,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from esone_api import __version__, services
+from esone_api.chatbot import reset_chatbot
 from esone_api.config import get_settings
 from esone_api.database import dispose_db, get_session_factory, init_db
 from esone_api.optimizer import reset_optimizer
 from esone_api.ratelimit import AuthRateLimitMiddleware
-from esone_api.routers import admin, auth, chat, health, users
+from esone_api.routers import admin, auth, chat, chatbot, health, users
 from esone_api.telemetry import RequestTelemetryMiddleware, start_shipper, stop_shipper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -37,6 +38,7 @@ async def lifespan(_: FastAPI):
     yield
     await stop_shipper()
     await reset_optimizer()
+    await reset_chatbot()
     await dispose_db()
 
 
@@ -70,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix=prefix)
     app.include_router(admin.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
+    app.include_router(chatbot.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     return app
 

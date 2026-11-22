@@ -1,0 +1,209 @@
+# API Optimizer: project knowledge for the Esone chatbot
+#
+# The Esone project chatbot answers ONLY from this file. Edit it to change what
+# the bot knows. Each section starts with a line beginning "## ". Keep facts
+# short and true; the bot will say "I don't know" for anything not written here.
+# Lines starting with "#" (like these) are comments and are not sent to the model.
+
+## Overview: what is API Optimizer?
+API Optimizer (also called API Latency Reducer) is a production-style backend
+platform that makes APIs faster, cheaper and easier to observe. It sits in front
+of an application's API and adds response caching, rate limiting, an LLM gateway
+and a full analytics dashboard.
+The project has two applications:
+- API Optimizer: the backend platform (FastAPI) plus an admin dashboard (Next.js).
+- Esone: a search-style question-answering web app. Esone is the first application
+  connected to API Optimizer: every question an Esone user asks is answered through
+  API Optimizer, and Esone ships its request telemetry to API Optimizer so the
+  dashboard can analyse it.
+The goal of the project: show how a real company reduces API latency and cost with
+caching, controls abuse with rate limits, tracks per-user usage and billing, and
+monitors everything on one dashboard.
+
+## Problem it solves
+Repeated questions and repeated API calls waste time and money: every LLM call costs
+tokens, and slow upstream APIs make users wait. API Optimizer answers repeated or
+similar questions from a shared cache in milliseconds instead of seconds, limits
+how many requests each caller can make, records latency (p50, p95, p99), errors and
+tokens for every request, and charges each user only for fresh answers.
+
+## How a question is answered (the answer pipeline)
+When a user asks a question in Esone, Esone forwards it to API Optimizer's answers
+endpoint (POST /api/v1/answers) using a service account. API Optimizer then:
+1. Checks the shared answer cache: first an exact match, then a semantic match
+   (embedding similarity of at least 0.92). Numbers and dates in the two questions
+   must agree, so "population in 2010" never reuses an answer about 2020.
+2. If not cached, asks Gemini (the AI model) to answer from its own knowledge.
+3. If Gemini does not know, searches the web in stages: Wikipedia first, then
+   DuckDuckGo, Wikidata and optional Brave or Google search, preferring trusted
+   domains (for example government and education sites).
+4. Stores the new answer in the cache for 2 hours so the next person asking the
+   same or a similar question gets it instantly.
+Time-sensitive questions (for example "today", "latest", "current price") are cached
+for only 10 minutes and only for exact repeats. Questions containing personal data
+(emails, phone numbers and similar) are never cached. A short lock stops many users
+from triggering the same expensive lookup at the same moment (cache stampede
+protection).
+
+## Shared answer cache
+- Shared by all users: one person's question can answer everyone else's.
+- Exact match first, then semantic (meaning-based) match using Gemini embeddings.
+- Time to live: 2 hours for normal answers, 10 minutes for time-sensitive ones.
+- Redis holds the cache and the list of questions from the last hour; the database
+  keeps every question permanently for history and analytics.
+- Cache status of every answer is recorded as exact hit, semantic hit, miss or bypassed.
+- If Redis is down, the system fails open: answers still work, just without caching.
+
+## Response caching for any API (cache rules)
+Besides answers, API Optimizer can cache ordinary API responses. Admins and operators
+create cache rules on the dashboard: an endpoint pattern, a TTL (time to live), a
+priority, and whether the cache key includes the user, query parameters or headers.
+Only successful responses are cached. Cached responses are served from Redis.
+
+## Rate limiting
+API Optimizer uses tiered, per-minute rate limits similar to commercial APIs:
+- Anonymous callers (no token): 60 requests per minute.
+- Signed-in users (viewer role): 300 requests per minute.
+- Privileged users (operator and admin roles): 1000 requests per minute.
+Every response carries the standard IETF RateLimit headers (RateLimit-Limit,
+RateLimit-Remaining, RateLimit-Reset, RateLimit-Policy), and rejected requests get
+HTTP 429 with a Retry-After header. Esone separately limits login and sign-up attempts
+to 5 per minute per IP address to stop password guessing.
+
+## LLM gateway
+API Optimizer includes a gateway for large language model calls:
+- Primary model with automatic fallback to a second model if the first fails.
+- Circuit breaker: after repeated failures the gateway stops calling the provider for
+  a cool-down period, then tests it carefully before resuming.
+- Exact-match caching of model replies when temperature is 0.
+- Every call records model, tokens, cost and latency.
+- Provider: Google Gemini through its OpenAI-compatible API, so other OpenAI-compatible
+  providers can be swapped in by configuration.
+
+## Per-user token usage and billing
+- Every answer records its tokens (model tokens and embedding tokens) and cost.
+- Answers served from the cache or from the internal knowledge base (RAG) are free.
+- Freshly generated answers are billable at 5 Indian rupees (INR) per token.
+- The Pricing page shows each user separately: billable tokens, paid answers, free
+  answers and total charges in rupees.
+
+## AI guardrails
+Every question passes through guardrails before reaching the model:
+- Prompt-injection detection (for example "ignore previous instructions"), which can
+  block the request.
+- PII masking: emails, phone numbers and similar personal data are masked before
+  anything is sent to the model.
+- Every guardrail event is logged and shown on the Guardrails page.
+
+## Knowledge base and AI assistant (RAG)
+Admins can upload documents to a knowledge base. Documents are split into chunks,
+embedded and stored in a local vector database (ChromaDB). The built-in AI assistant
+answers questions about performance using retrieval-augmented generation (RAG): it
+retrieves the most relevant chunks and analytics data and asks the model to answer
+from them.
+
+## The admin dashboard (pages)
+The API Optimizer dashboard is a Next.js web app for admins and operators:
+- Overview: requests, average latency, p50/p95/p99, cache hit rate, error rate, health.
+- Analytics: traffic and latency charts, slowest endpoints, recent requests, suggestions.
+- Users: a directory of every account and every Esone user with their profile, API
+  activity, searches, tokens, rate-limit usage and charges.
+- Cache: cache hit rates, the shared answer cache and the recent questions.
+- Rate limits: each tier's limits, the caller's current usage and recent 429 rejections.
+- Cache rules: create, edit and delete response-caching rules.
+- System status: health of the API, database and Redis.
+- LLM gateway / Chat traffic: model calls, cache hits and recent questions.
+- Assistant: the AI performance assistant.
+- Knowledge base: upload and manage documents for RAG.
+- AI usage: tokens and cost per model and per feature.
+- Pricing: per-user billing in rupees.
+- Guardrails: prompt-injection and PII events.
+A service switch in the top bar flips every page between the gateway's own traffic and
+a monitored application such as Esone. A user switch lets an admin view every page as
+one particular user ("view as user").
+
+## Monitoring Esone (telemetry)
+Esone records every request it serves and every call it makes (method, path, status,
+latency, sizes, cache hit) and ships them in batches to API Optimizer
+(POST /api/v1/ingest/requests). Requests made by a signed-in person carry only an
+opaque reference such as "esone:7", never a name or email. The dashboard then shows
+Esone's traffic, latency and errors, and each Esone user's own activity.
+
+## Roles and security
+- Roles: admin (full access), operator (can edit cache rules and use the service
+  integration), viewer (read-only). New accounts are viewers.
+- Authentication: JWT access tokens (HS256) with refresh tokens; passwords hashed with bcrypt.
+- Secrets and API keys are never written to logs or error messages.
+- CORS allows only the configured frontend origins.
+- The backend runs as a non-root user in Docker.
+
+## Tech stack
+Backend (API Optimizer):
+- Python 3.11, FastAPI (async), Pydantic v2
+- SQLAlchemy 2 (async) with Alembic migrations
+- PostgreSQL on Supabase (SQLite and MySQL also supported)
+- Redis (redis.asyncio) for caching, rate limiting and recent questions
+- Google Gemini through the OpenAI-compatible API (chat and embeddings)
+- ChromaDB for the RAG vector store
+- Prometheus metrics at /metrics
+- pytest for tests and ruff for linting
+Dashboard (API Optimizer):
+- Next.js 14 (App Router), React, TypeScript (strict), Tailwind CSS
+- recharts for charts, framer-motion, lucide-react icons, Radix UI
+Esone:
+- Backend: FastAPI, SQLAlchemy 2 async, PostgreSQL on Supabase, JWT auth
+- Frontend: server-rendered Jinja2 templates plus plain TypeScript (no framework),
+  built to static HTML
+
+## Architecture and how the parts connect
+Browser -> Esone frontend (Vercel) -> Esone backend (Render) -> API Optimizer backend
+(Render) -> Redis cache, PostgreSQL database and Gemini.
+The admin dashboard (Vercel) talks directly to the API Optimizer backend.
+Middleware order in API Optimizer (outer to inner): CORS, Metrics, CorrelationId,
+Auth, RateLimit, Cache. Every request gets a correlation id so one user action can be
+traced across Esone and API Optimizer.
+
+## Deployment
+- API Optimizer backend: Render web service, database on Supabase PostgreSQL, Redis on Render.
+- API Optimizer dashboard: Vercel.
+- Esone backend: Render web service with its own Supabase database.
+- Esone frontend: Vercel static site.
+- Code is on GitHub; pushing to the main branch redeploys the services.
+- Database schema changes are applied with Alembic migrations on deploy.
+
+## Testing and quality
+The backend has an automated test suite (pytest) covering caching, rate limits,
+answers, billing, guardrails, analytics, users and the view-as feature, plus Esone's
+own backend and frontend tests. Code is linted with ruff, and the TypeScript is
+type-checked in strict mode. A CI workflow runs the checks on every push.
+
+## About the developer
+API Optimizer and Esone were designed and built by Md Ehteshamul Haque.
+GitHub: https://github.com/Mdehteshamulhaque1
+For questions not covered here, contact the developer through GitHub.
+
+## Frequently asked questions
+Q: Who built this project?
+A: Md Ehteshamul Haque. GitHub: https://github.com/Mdehteshamulhaque1
+
+Q: Why is the first answer slow and the second one fast?
+A: The first time, the answer is generated by Gemini or researched on the web. After
+that it is stored in the shared cache for 2 hours, so the same or a similar question is
+answered in milliseconds.
+
+Q: Is my question shared with other users?
+A: The answer text is cached and can be reused for anyone asking the same question,
+but your account details are never shared, and questions containing personal data are
+never cached.
+
+Q: What happens if Redis or the AI model is down?
+A: The system fails open. Without Redis, requests still work without caching. If the
+primary model fails, the fallback model is tried; if both fail, the web sources answer.
+
+Q: How much does a question cost?
+A: Answers from the cache or the knowledge base are free. Fresh answers cost 5 rupees
+per token and are shown per user on the Pricing page.
+
+Q: Why does the site sometimes take a minute to respond?
+A: The backends run on Render's free plan, which sleeps after about 15 minutes without
+traffic. The first request wakes it up; after that it is fast.

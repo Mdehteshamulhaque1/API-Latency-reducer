@@ -124,3 +124,49 @@ class HealthCheckResponse(BaseModel):
     version: str
     database: str
     redis: str
+
+
+class QueryEndpoint(BaseModel):
+    method: str
+    endpoint: str
+    requests: int
+
+
+class QueryCategory(BaseModel):
+    """One kind of request: a real query, supporting traffic, or a call the service made."""
+
+    key: str
+    label: str
+    #: "query" (questions users asked), "supporting" (sign-in, history, health) or "outbound".
+    group: str
+    description: str
+    requests: int
+    errors: int
+    avg_response_time_ms: float
+    endpoints: List[QueryEndpoint] = Field(default_factory=list)
+
+
+class QuerySearchTotals(BaseModel):
+    """Search questions from answer_logs: how they were answered and what they cost."""
+
+    questions: int
+    cache_hits: int
+    fresh_answers: int
+    errors: int
+    avg_latency_ms: float
+    total_tokens: int
+    billable_tokens: int
+    cost_inr: float
+    rate_per_token_inr: float
+
+
+class QueryBreakdown(BaseModel):
+    """Real queries separated from supporting traffic (GET /analytics/queries)."""
+
+    hours: int
+    total_requests: int
+    real_queries: int
+    supporting_requests: int
+    outbound_calls: int
+    categories: List[QueryCategory] = Field(default_factory=list)
+    searches: QuerySearchTotals

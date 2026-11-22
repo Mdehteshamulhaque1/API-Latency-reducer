@@ -30,6 +30,7 @@ def test_every_page_renders_with_api_url_and_security_headers(client, page):
     assert '<meta name="esone-api-url" content="https://esone-api.example.com">' in res.text
     assert f'data-page="{page}"' in res.text
     assert "static/js/site.js" in res.text
+    assert 'id="chatbot"' in res.text and "static/js/chatbot.js" in res.text  # project chatbot everywhere
     assert res.headers["X-Frame-Options"] == "DENY"
     assert "connect-src 'self' https://esone-api.example.com" in res.headers["Content-Security-Policy"]
     assert client.head(path).status_code == 200  # uptime monitors often use HEAD

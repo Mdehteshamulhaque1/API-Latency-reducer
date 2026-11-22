@@ -442,3 +442,25 @@ export async function apiChatHistoryClear(): Promise<{ deleted: number }> {
   const res = await authed("/api/v1/chat/history", { method: "DELETE" })
   return res.json() as Promise<{ deleted: number }>
 }
+
+// ---------------------------------------------------------------------------
+// Project chatbot (backend/esone_api/routers/chatbot.py), public
+// ---------------------------------------------------------------------------
+
+export interface ChatbotTurn {
+  role: "user" | "assistant"
+  content: string
+}
+
+export interface ChatbotReply {
+  answer: string
+  /** "gemini" when the model phrased it, "notes" when it is the closest knowledge section. */
+  answered_by: "gemini" | "notes"
+}
+
+/** POST /api/v1/chatbot (no account needed). Answers questions about the project. */
+export async function apiChatbot(message: string, history: ChatbotTurn[], signal?: AbortSignal): Promise<ChatbotReply> {
+  const res = await request("/api/v1/chatbot", { method: "POST", body: JSON.stringify({ message, history }), signal })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return res.json() as Promise<ChatbotReply>
+}

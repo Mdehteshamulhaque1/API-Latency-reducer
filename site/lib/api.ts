@@ -151,6 +151,7 @@ const VIEW_AS_PATHS = [
   "/api/v1/analytics/benchmark",
   "/api/v1/analytics/slow-endpoints",
   "/api/v1/analytics/suggestions",
+  "/api/v1/analytics/queries",
   "/api/v1/rate-limits/me",
   "/api/v1/rate-limits/events",
   "/api/v1/ai-usage/summary",
@@ -552,6 +553,47 @@ export async function apiAnalyticsServices(hours = 24): Promise<MonitoredService
     { method: "GET" },
   )
   return Array.isArray(data) ? (data as MonitoredService[]) : []
+}
+
+/** One kind of request in GET /api/v1/analytics/queries (app/schemas/analytics.py QueryCategory). */
+export interface QueryCategory {
+  key: string
+  label: string
+  /** query = questions users asked; supporting = sign-in, history, health; outbound = calls the service made. */
+  group: "query" | "supporting" | "outbound"
+  description: string
+  requests: number
+  errors: number
+  avg_response_time_ms: number
+  endpoints: { method: string; endpoint: string; requests: number }[]
+}
+
+export interface QueryBreakdown {
+  hours: number
+  total_requests: number
+  real_queries: number
+  supporting_requests: number
+  outbound_calls: number
+  categories: QueryCategory[]
+  searches: {
+    questions: number
+    cache_hits: number
+    fresh_answers: number
+    errors: number
+    avg_latency_ms: number
+    total_tokens: number
+    billable_tokens: number
+    cost_inr: number
+    rate_per_token_inr: number
+  }
+}
+
+/** GET /api/v1/analytics/queries: real queries apart from sign-in, history and health traffic, with search cost. */
+export async function apiQueryBreakdown(hours = 24, service?: string): Promise<QueryBreakdown> {
+  return authed<QueryBreakdown>(
+    withQuery("/api/v1/analytics/queries", { hours: clampHours(hours), service: service || undefined }),
+    { method: "GET" },
+  )
 }
 
 export async function apiAnalyticsSummary(hours = 24, scope: AnalyticsScope = {}): Promise<AnalyticsSummary> {

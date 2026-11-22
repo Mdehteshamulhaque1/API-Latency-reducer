@@ -98,11 +98,33 @@ class Settings(BaseSettings):
     telemetry_service_name: str = "esone"
     telemetry_flush_seconds: float = 30.0
 
+    # Project chatbot (POST /api/v1/chatbot, public). Answers from
+    # esone_api/chatbot/project_knowledge.txt; with a Gemini key the model
+    # phrases the answer, without one the closest section is returned.
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    chatbot_timeout_seconds: float = 20.0
+    chatbot_max_tokens: int = Field(default=500, ge=50, le=4096)
+    # Chatbot messages per client IP per sliding minute (0 disables).
+    chatbot_rate_limit_per_minute: int = 10
+
     @field_validator("optimizer_url")
     @classmethod
     def _clean_optimizer_url(cls, value: str | None) -> str | None:
         value = (value or "").strip().rstrip("/")
         return value or None
+
+    @field_validator("gemini_api_key")
+    @classmethod
+    def _blank_key_is_none(cls, value: str | None) -> str | None:
+        value = (value or "").strip()
+        return value or None
+
+    @field_validator("gemini_base_url")
+    @classmethod
+    def _clean_gemini_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
 
     @field_validator("database_url")
     @classmethod
