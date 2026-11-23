@@ -71,12 +71,13 @@ Tests: pytest, pytest-asyncio, httpx `ASGITransport`. Load test: k6.
 ```
 app/             FastAPI backend: api/v1 (routes), services, ai (answers, assistant,
                  guardrails, rag), middleware, models, schemas, core, database, utils
-alembic/         migrations 0001..0010
+alembic/         migrations 0001..0012
 tests/           pytest suite (integration at the top level, unit/ for pure logic)
 scripts/         migrate_db.py, seed_demo.py, dev.sh (whole local stack)
 site/            Next.js dashboard: app/ (routes), components/, lib/api.ts
 esone/           Esone: backend/ (FastAPI) and frontend/ (static Jinja2 + TypeScript)
 loadtest/        k6 benchmark
+k8s/             Kubernetes manifests for the local k3d cluster (see "Kubernetes deployment")
 docs/            architecture, manual test checklist, project structure
 ```
 
@@ -360,6 +361,99 @@ The backend image runs `python scripts/migrate_db.py` before `uvicorn`. Pass
 `OPENAI_API_KEY` through your shell or a `.env` file next to the compose
 file. The dashboard is not containerised; run it with `npm run dev` or
 deploy it to Vercel.
+
+## Kubernetes deployment (local k3d cluster)
+
+The gateway also runs on a local Kubernetes cluster (k3d / k3s) with PostgreSQL, Redis, an Ingress and a Horizontal Pod Autoscaler. Everything runs on a laptop — no cloud account needed.
+
+### Architecture
+
+```
+Browser / k6
+     │
+     ▼
+localhost:8085 ──► Traefik Ingress ──► Service "gateway" ──► gateway pods (2–4, scaled by HPA)
+                                                               │
+                                                               ├──► Service "postgres" ──► PostgreSQL 16 (1 Gi PersistentVolume)
+                                                               └──► Service "redis"    ──► Redis 7
+```
+
+### Files
+
+| File | What it does |
+|---|---|
+| `k8s/redis.yaml` | Redis Deployment + Service |
+| `k8s/postgres.yaml` | PostgreSQL Deployment + 1 Gi PersistentVolumeClaim + Service, `pg_isready` readiness probe |
+| `k8s/config.yaml` | ConfigMap with non-secret settings (Redis URL, DB pool size, rate limiting) |
+| `k8s/gateway.yaml` | Gateway Deployment (2 replicas, probes, CPU/memory requests) + Service |
+| `k8s/ingress.yaml` | Traefik Ingress → gateway on `localhost:8085` |
+| `k8s/hpa.yaml` | HorizontalPodAutoscaler: 2–4 pods, target 50% CPU |
+| `loadtest/k8s-rush.js` | k6 load test: ramps to 150 req/s and checks status + DB health |
+
+### Run it
+
+```powershell
+# 1. Cluster (port 8085 on the laptop → Ingress)
+k3d cluster create apiopt -p "8085:80@loadbalancer"
+
+# 2. Build the image and load it into the cluster (no registry needed)
+docker build -t api-optimizer:v1 .
+k3d image import api-optimizer:v1 -c apiopt
+
+# 3. Secrets are created with kubectl, never committed to Git (replace the placeholder values)
+kubectl create secret generic postgres-secret --from-literal=POSTGRES_USER=apiopt --from-literal=POSTGRES_PASSWORD=changeme --from-literal=POSTGRES_DB=apiopt
+kubectl create secret generic apiopt-secrets --from-literal=SECRET_KEY=change-me-to-a-long-random-string --from-literal=ADMIN_EMAIL=admin@apioptimizer.dev --from-literal=ADMIN_PASSWORD=ChangeMe@12345 --from-literal=DATABASE_URL=postgresql+asyncpg://apiopt:changeme@postgres:5432/apiopt
+
+# 4. Everything else
+kubectl apply -f k8s/
+kubectl get pods,svc,ingress,hpa,pvc
+
+# 5. Check
+curl http://127.0.0.1:8085/api/v1/health
+# {"status":"healthy","version":"1.0.0","database":"healthy","redis":"healthy"}
+```
+
+### Design decisions
+
+- **Secrets vs config:** passwords, the JWT secret and the DB URL live in Kubernetes Secrets created with `kubectl`; non-secret settings live in a ConfigMap. Nothing secret is in Git.
+- **Probes:** readiness = HTTP `/api/v1/health` (pod gets traffic only when ready); liveness = TCP port 8000 (only "is the process alive?"). Liveness deliberately does **not** check the database, so a short DB outage does not restart every gateway pod. Verified: deleting the Postgres pod left all gateway pods at `RESTARTS 0`, and the data survived on the PersistentVolume.
+- **Rolling updates:** new pods come up one at a time and only replace old ones after passing readiness, so the database migration that runs at container start never runs twice at the same moment.
+- **Autoscaling:** HPA on CPU (request 100m, target 50%), min 2 / max 4 pods (max kept low because it runs on a laptop).
+- **Connection pool math:** (pool 10 + overflow 5) × 4 pods = 60 connections, below PostgreSQL's `max_connections` of 100.
+
+### Load test results
+
+k6, 5.5 minutes, ramping to **150 requests/second held for 3 minutes**, hitting `/api/v1/health` (DB check + Redis check + one analytics insert per request). Everything — cluster, k6 and other apps — ran on the same laptop, so these are laptop numbers, not production numbers.
+
+| | Run 1 — DB pool 5 + 2 | Run 2 — DB pool 10 + 5 |
+|---|---|---|
+| Requests completed | 30,474 of 37,349 (6,875 dropped) | **37,349 of 37,349** |
+| Failed requests | 56 non-200 (+ DB failures the test did not catch) | **0** |
+| `"database": "healthy"` check | not checked | **100%** |
+| p95 latency | 17.9 ms | **11.9 ms** |
+| Max latency | 30.5 s | **0.22 s** |
+| DB pool timeout errors in logs | hundreds | **0** |
+| Autoscaling | 2 → 4 pods | 2 → 4 pods (and back to 2 after the test) |
+
+**What happened:** Run 1 passed the k6 thresholds, but the logs showed
+`QueuePool limit of size 5 overflow 2 reached, connection timed out, timeout 30.00`.
+Every request uses the database twice (health check + analytics insert), so each pod's 7 connections ran out at 150 req/s and requests waited 30 seconds for a connection. The health endpoint also returns HTTP 200 when its DB check fails, so the k6 test was extended to assert `"database": "healthy"`. Raising the pool size through the ConfigMap (no code change) fixed it.
+
+### Known limitations / next steps
+
+- Single-node local cluster; k6 ran on the same machine as the cluster.
+- Migrations run at container start; a Kubernetes Job (or init container) would be cleaner.
+- Analytics are written to the DB on every request; batching them would cut DB load further.
+- Rate limiting was switched off only during the load test (all k6 traffic comes from one IP).
+
+### Screenshots
+
+| | |
+|---|---|
+| Health check through the Ingress | ![Health](docs/k8s/health-ingress.png) |
+| Cluster overview: pods, services, Ingress, HPA, PVC | ![HPA](docs/k8s/hpa-scaling.png) |
+| HPA scaling events (2 → 3 → 4 → 2) | ![HPA events](docs/k8s/hpa-events.png) |
+| k6 result after the fix | ![k6](docs/k8s/k6-summary.png) |
 
 ## Deployment
 
